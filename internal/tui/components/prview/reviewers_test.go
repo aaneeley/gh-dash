@@ -1,6 +1,7 @@
 package prview
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -421,4 +422,38 @@ func TestRenderSuggestedReviewers(t *testing.T) {
 		"expected output to contain owner icon for suggested reviewer, got: %q", got)
 	require.False(t, strings.Contains(got, "@author"),
 		"expected output to NOT contain '@author' (PR author), got: %q", got)
+}
+
+func TestReviewerOrderIsStableAcrossRedrawsAndRefreshes(t *testing.T) {
+	for _, width := range []int{30, 160} {
+		// Deliberately mix API order, case, and reviewer categories.
+		requests := make([]data.ReviewRequestNode, 2)
+		requests[0].RequestedReviewer.User.Login = "Zoe"
+		requests[1].RequestedReviewer.Team.Slug = "core-team"
+		reviews := make([]data.Review, 2)
+		reviews[0].Author.Login, reviews[0].State = "elena", "APPROVED"
+		reviews[1].Author.Login, reviews[1].State = "Alice", "CHANGES_REQUESTED"
+		m := newTestModelWithWidth(t, &data.PullRequestData{}, reviews, requests, width)
+		m.pr.Data.Enriched.SuggestedReviewers = make([]data.SuggestedReviewer, 2)
+		m.pr.Data.Enriched.SuggestedReviewers[0].Reviewer.Login = "yuki"
+		m.pr.Data.Enriched.SuggestedReviewers[1].Reviewer.Login = "bob"
+
+		expected := m.renderRequestedReviewers()
+		plain := ansi.Strip(expected)
+		previous := -1
+		for _, name := range []string{"@Alice", "@bob", "core-team", "@elena", "@yuki", "@Zoe"} {
+			index := strings.Index(plain, name)
+			require.Greater(t, index, previous, "reviewers must be alphabetic: %q", plain)
+			previous = index
+		}
+		for range 200 {
+			require.Equal(t, expected, m.renderRequestedReviewers(), "redraws must not shuffle reviewers")
+		}
+
+		// A refresh may return the same people in a different API order.
+		slices.Reverse(m.pr.Data.Enriched.ReviewRequests.Nodes)
+		slices.Reverse(m.pr.Data.Enriched.Reviews.Nodes)
+		slices.Reverse(m.pr.Data.Enriched.SuggestedReviewers)
+		require.Equal(t, expected, m.renderRequestedReviewers())
+	}
 }

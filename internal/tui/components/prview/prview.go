@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image/color"
 	"regexp"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -308,6 +309,7 @@ func (m *Model) renderLabels() string {
 }
 
 type reviewerItem struct {
+	name string
 	text string
 }
 
@@ -382,7 +384,7 @@ func (m *Model) renderRequestedReviewers() string {
 		}
 		reviewerStr = lipgloss.JoinHorizontal(lipgloss.Top, stateIcon, " ", reviewerStr)
 
-		reviewerItems = append(reviewerItems, reviewerItem{text: reviewerStr})
+		reviewerItems = append(reviewerItems, reviewerItem{name: displayName, text: reviewerStr})
 	}
 
 	for login, state := range reviewStates {
@@ -405,7 +407,7 @@ func (m *Model) renderRequestedReviewers() string {
 		}
 		reviewerStr := stateIcon + " " + reviewerStyle.Render("@"+login)
 
-		reviewerItems = append(reviewerItems, reviewerItem{text: reviewerStr})
+		reviewerItems = append(reviewerItems, reviewerItem{name: login, text: reviewerStr})
 	}
 
 	// Show suggested reviewers (= code owners) who haven't been requested or reviewed yet
@@ -424,12 +426,22 @@ func (m *Model) renderRequestedReviewers() string {
 			faintStyle.Render("@"+login),
 		)
 
-		reviewerItems = append(reviewerItems, reviewerItem{text: reviewerStr})
+		reviewerItems = append(reviewerItems, reviewerItem{name: login, text: reviewerStr})
 	}
 
 	if len(reviewerItems) == 0 {
 		return ""
 	}
+
+	// Map iteration and GitHub's request/suggestion order are not stable.
+	// Sort by identity rather than styled text or review status so neither
+	// redraws nor refreshes shuffle reviewers (or change how the list wraps).
+	slices.SortFunc(reviewerItems, func(a, b reviewerItem) int {
+		if cmp := strings.Compare(strings.ToLower(a.name), strings.ToLower(b.name)); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(a.name, b.name)
+	})
 
 	width := m.getIndentedContentWidth()
 	var rows []string
