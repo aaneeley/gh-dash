@@ -250,6 +250,7 @@ func (m *Model) EnrichPR(data data.EnrichedPullRequestData) {
 		m.Prs[i].Primary = &primary
 		m.Prs[i].IsEnriched = true
 		m.Prs[i].Enriched = data
+		m.Prs[i].RefreshedAt = time.Now()
 	}
 
 	if found {
@@ -357,6 +358,7 @@ func (m *Model) applyBackgroundRefresh(msg BackgroundRefreshMsg) {
 		if prev, ok := enriched[pr.Url]; ok {
 			row.Enriched = prev.Enriched
 			row.IsEnriched = true
+			row.RefreshedAt = prev.RefreshedAt
 		}
 		if newIdx == -1 && selectedUrl != "" && pr.Url == selectedUrl {
 			newIdx = i
@@ -759,7 +761,7 @@ func (m Model) GetTotalCount() int {
 
 func (m Model) GetPagerContent() string {
 	pagerContent := ""
-	timeElapsed := utils.TimeElapsed(m.LastUpdated())
+	timeElapsed := utils.TimeElapsed(m.currRowLastUpdated())
 	if timeElapsed == "now" {
 		timeElapsed = "just now"
 	} else {
@@ -778,6 +780,18 @@ func (m Model) GetPagerContent() string {
 	}
 	pager := m.Ctx.Styles.ListViewPort.PagerStyle.Render(pagerContent)
 	return pager
+}
+
+// currRowLastUpdated returns when the data of the selected PR was last
+// fetched: either with the rest of the section or, if that happened more
+// recently, on its own.
+func (m Model) currRowLastUpdated() time.Time {
+	lastUpdated := m.LastUpdated()
+	idx := m.Table.GetCurrItem()
+	if idx >= 0 && idx < len(m.Prs) && m.Prs[idx].RefreshedAt.After(lastUpdated) {
+		return m.Prs[idx].RefreshedAt
+	}
+	return lastUpdated
 }
 
 func (m *Model) ConfigGetter() config.SectionConfig {

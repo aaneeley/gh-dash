@@ -10,6 +10,9 @@ type Data struct {
 	Primary    *data.PullRequestData
 	Enriched   data.EnrichedPullRequestData
 	IsEnriched bool
+	// RefreshedAt is the last time this PR was fetched on its own, as
+	// opposed to as part of its section.
+	RefreshedAt time.Time
 }
 
 func (data Data) GetTitle() string {

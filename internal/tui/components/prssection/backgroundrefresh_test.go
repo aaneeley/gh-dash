@@ -230,4 +230,26 @@ func TestEnrichPR_UpdatesListRow(t *testing.T) {
 	require.False(t, m.Prs[2].IsEnriched)
 }
 
+func TestPagerContent_ReflectsSelectedPRRefresh(t *testing.T) {
+	m := newRefreshTestModel(t, 1, 2)
+	m.TotalCount = 2
+	m.SetLastUpdated(time.Now().Add(-10 * time.Minute))
+	require.Contains(t, m.GetPagerContent(), "Updated ~10m ago")
+
+	// the selected PR was just refetched on its own
+	m.EnrichPR(data.EnrichedPullRequestData{Url: prUrl(1), Number: 1})
+	require.Contains(t, m.GetPagerContent(), "Updated just now")
+
+	// the other PR still has the data from when the section was fetched
+	m.NextRow()
+	require.Contains(t, m.GetPagerContent(), "Updated ~10m ago")
+
+	// a refresh of the whole section is newer than the PR's own refresh
+	m.Prs[0].RefreshedAt = time.Now().Add(-5 * time.Minute)
+	m.PrevRow()
+	require.Contains(t, m.GetPagerContent(), "Updated ~5m ago")
+	_, _ = m.Update(refreshMsg(m, 1, 2))
+	require.Contains(t, m.GetPagerContent(), "Updated just now")
+}
+
 var _ section.Section = (*Model)(nil)
