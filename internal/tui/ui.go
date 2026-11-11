@@ -67,6 +67,7 @@ type Model struct {
 	tasks            map[string]context.Task
 	positionOverride string // "" means no override, "right" or "bottom"
 	mode             Mode
+	recovery         *recoveryState
 }
 
 type Mode int
@@ -196,7 +197,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(startCmd, cmd)
 	}
+	if keyMsg, isKey := msg.(tea.KeyMsg); isKey && m.recovery != nil {
+		// Explicit input wins over a still-loading saved selection.
+		if s := m.getCurrSection(); s != nil {
+			delete(m.recovery.pending, recoveryKey(s))
+		}
+		if m.sidebar.IsOpen || !key.Matches(keyMsg, m.keys.TogglePreview) {
+			m.recovery.preview = nil
+		}
+	}
 	model, cmd := m.update(msg)
+	m.finishRecoveryPreview()
+	m.writeCheckpoint()
 	return model, tea.Batch(cmd, m.prView.SyncChecksSpinner(m.isPRPreviewVisible()))
 }
 
@@ -253,6 +265,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if m.footer.ShowConfirmQuit && (msg.String() == "y" || msg.String() == "enter") {
+			if m.recovery != nil {
+				m.recovery.quitting = true
+			}
 			return m, tea.Quit
 		} else if m.footer.ShowConfirmQuit {
 			m.footer.SetShowConfirmQuit(false)
@@ -340,6 +355,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.TogglePreview):
 			m.sidebar.IsOpen = !m.sidebar.IsOpen
 			m.syncMainContentDimensions()
+			cmds = append(cmds, m.syncSidebar())
+			if m.sidebar.IsOpen && m.ctx.View == config.PRsView {
+				cmds = append(cmds, m.prView.EnrichCurrRow())
+			}
 
 		case key.Matches(msg, m.keys.TogglePreviewPosition):
 			if m.sidebar.IsOpen {
@@ -416,6 +435,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Quit):
 			if !m.ctx.Config.ConfirmQuit {
+				if m.recovery != nil {
+					m.recovery.quitting = true
+				}
 				return m, tea.Quit
 			}
 
@@ -739,9 +761,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncMainContentDimensions()
 
 		m.initSections()
+		m.initRecovery()
 		fetchSectionsCmds := m.fetchAllViewSections()
 		m.updateTabs()
-		m.tabs.SetCurrSectionId(0)
+		m.tabs.SetCurrSectionId(m.currSectionId)
 
 		if m.ctx.BackgroundSource != "bubbletea" {
 			log.Debugf("Setting markdownStyle in initMsg")
@@ -1177,6 +1200,20 @@ func (m *Model) updateSection(id int, sType string, msg tea.Msg) (cmd tea.Cmd) {
 	}
 
 	currSection := m.getCurrSection()
+	var target section.Section
+	switch sType {
+	case prssection.SectionType:
+		target = m.prs[id]
+	case issuessection.SectionType:
+		target = m.issues[id]
+	case notificationssection.SectionType:
+		if id >= 0 && id < len(m.notifications) {
+			target = m.notifications[id]
+		}
+	}
+	if resumeCmd, restoring := m.restoreSection(target); restoring {
+		return tea.Batch(cmd, resumeCmd)
+	}
 	if currSection != nil && id == currSection.GetId() {
 		if _, ok := msg.(prssection.SectionPullRequestsFetchedMsg); ok {
 			cmd = m.onViewedRowChanged()

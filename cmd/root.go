@@ -171,6 +171,10 @@ func init() {
 		false,
 		"passing this flag will allow writing debug output to debug.log",
 	)
+	rootCmd.Flags().Bool("resume", false,
+		"resume an interrupted dashboard in this Rex pane; exit silently if none exists")
+	rootCmd.Flags().String("state-file", "",
+		"save navigation to this checkpoint file (automatic per pane inside Rex)")
 
 	rootCmd.Flags().String(
 		"cpuprofile",
@@ -186,6 +190,19 @@ func init() {
 	)
 
 	rootCmd.Run = func(_ *cobra.Command, args []string) {
+		resume, _ := rootCmd.Flags().GetBool("resume")
+		stateFile, _ := rootCmd.Flags().GetString("state-file")
+		store, checkpoint, recoveryErr := prepareRecovery(stateFile, resume)
+		if recoveryErr != nil {
+			fmt.Fprintf(os.Stderr, "gh dash recovery: %v\n", recoveryErr)
+			return
+		}
+		if resume && store == nil {
+			return
+		}
+		if store != nil {
+			defer store.Close()
+		}
 		debug, _ := rootCmd.Flags().GetBool("debug")
 		var loggerFile *os.File
 		if debug {
@@ -243,6 +260,12 @@ func init() {
 			config.Location{RepoPath: gitRepoPath, ConfigFlag: cfgFlag},
 			tui.Repositories{GitRepo: gitRepo, GHRepo: &ghRepo},
 		)
+		if store != nil {
+			if err := model.EnableRecovery(store, checkpoint); err != nil {
+				fmt.Fprintf(os.Stderr, "gh dash recovery: %v\n", err)
+				return
+			}
+		}
 
 		cpuprofile, err := rootCmd.Flags().GetString("cpuprofile")
 		if err != nil {

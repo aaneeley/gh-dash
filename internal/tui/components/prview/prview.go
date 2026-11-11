@@ -769,6 +769,18 @@ func (m Model) SelectedTab() string {
 	return m.carousel.SelectedItem()
 }
 
+func (m Model) SummaryExpanded() bool { return m.summaryViewMore }
+
+func (m *Model) RestorePreview(tab string, expanded bool) {
+	for i, name := range tabs {
+		if name == tab {
+			m.carousel.SetCursor(i)
+			break
+		}
+	}
+	m.summaryViewMore = expanded
+}
+
 func (m *Model) SetSummaryViewMore() {
 	m.summaryViewMore = true
 }

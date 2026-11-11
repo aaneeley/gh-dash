@@ -128,6 +128,13 @@ func (m *Model) GetCurrItem() int {
 	return m.rowsViewport.GetCurrItem()
 }
 
+func (m Model) YOffset() int { return m.rowsViewport.YOffset() }
+
+func (m *Model) RestorePosition(row, offset int) {
+	m.rowsViewport.RestorePosition(row, offset)
+	m.SyncViewPortContent()
+}
+
 // SetCurrItem selects the given row while keeping the current scroll position
 // whenever the row is already visible.
 func (m *Model) SetCurrItem(id int) int {

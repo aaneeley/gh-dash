@@ -87,6 +87,13 @@ func (m *Model) GetCurrItem() int {
 	return m.currId
 }
 
+func (m Model) YOffset() int { return m.viewport.YOffset() }
+
+func (m *Model) RestorePosition(id, offset int) {
+	m.viewport.SetYOffset(max(0, offset))
+	m.SetCurrItem(id)
+}
+
 // SetCurrItem moves the selection to the given item without resetting the
 // scroll position. The viewport is only scrolled when the item would
 // otherwise be out of view.
