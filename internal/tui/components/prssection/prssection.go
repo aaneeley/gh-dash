@@ -27,6 +27,10 @@ type Model struct {
 	section.BaseModel
 	Prs []prrow.Data
 	cfg config.PrsSectionConfig
+	// fetchSeq is bumped whenever the section's rows are (re)fetched or
+	// replaced, so that results of background refreshes that were started
+	// before that point can be recognized as stale and dropped.
+	fetchSeq int
 }
 
 func NewModel(
@@ -198,8 +202,12 @@ func (m *Model) Update(msg tea.Msg) (section.Section, tea.Cmd) {
 			break
 		}
 
+	case BackgroundRefreshMsg:
+		m.applyBackgroundRefresh(msg)
+
 	case SectionPullRequestsFetchedMsg:
 		if m.LastFetch.TaskId == msg.TaskId {
+			m.fetchSeq++
 			if m.PageInfo != nil {
 				m.Prs = append(m.Prs, msg.Prs...)
 			} else {
@@ -227,15 +235,166 @@ func (m *Model) Update(msg tea.Msg) (section.Section, tea.Cmd) {
 	return m, tea.Batch(cmd, searchCmd, promptCmd, tableCmd)
 }
 
+// EnrichPR stores the result of a single PR fetch on the matching row. The
+// row's list data (state, checks, review status, etc.) is updated as well so
+// the table reflects the fresh data without refetching the whole section.
 func (m *Model) EnrichPR(data data.EnrichedPullRequestData) {
+	found := false
 	for i, currPr := range m.Prs {
-		if currPr.Primary.Number != data.Number {
+		if currPr.Primary == nil || currPr.Primary.Url != data.Url {
 			continue
 		}
 
+		found = true
+		primary := data.ToListPullRequestData()
+		m.Prs[i].Primary = &primary
 		m.Prs[i].IsEnriched = true
 		m.Prs[i].Enriched = data
 	}
+
+	if found {
+		m.Table.SetRows(m.BuildRows())
+	}
+}
+
+// BackgroundRefreshMsg carries the result of a refresh that was done without
+// putting the section into its loading state.
+type BackgroundRefreshMsg struct {
+	SectionId  int
+	Seq        int
+	Prs        []data.PullRequestData
+	TotalCount int
+	PageInfo   data.PageInfo
+	Err        error
+}
+
+// maxSearchPageSize is the maximum number of results GitHub's search returns
+// in a single page.
+const maxSearchPageSize = 100
+
+// RefreshInBackground refetches the rows that are currently loaded without
+// showing the loading spinner or resetting the table. The selection is
+// restored once the results arrive, see applyBackgroundRefresh.
+func (m *Model) RefreshInBackground() tea.Cmd {
+	if m == nil || m.IsLoading || m.IsSearching {
+		return nil
+	}
+
+	limit := m.Ctx.Config.Defaults.PrsLimit
+	if m.Config.Limit != nil {
+		limit = *m.Config.Limit
+	}
+	// refetch everything that was already paged in, so the list doesn't shrink
+	target := max(limit, len(m.Prs))
+	if target <= 0 {
+		return nil
+	}
+
+	m.fetchSeq++
+	seq := m.fetchSeq
+	id := m.Id
+	filters := m.GetFilters()
+
+	return func() tea.Msg {
+		msg := BackgroundRefreshMsg{SectionId: id, Seq: seq}
+		var pageInfo *data.PageInfo
+		for len(msg.Prs) < target {
+			pageSize := min(target-len(msg.Prs), maxSearchPageSize)
+			res, err := data.FetchPullRequests(filters, pageSize, pageInfo)
+			if err != nil {
+				msg.Err = err
+				return msg
+			}
+
+			msg.Prs = append(msg.Prs, res.Prs...)
+			msg.TotalCount = res.TotalCount
+			msg.PageInfo = res.PageInfo
+			pageInfo = &res.PageInfo
+			if !res.PageInfo.HasNextPage || len(res.Prs) == 0 {
+				break
+			}
+		}
+		return msg
+	}
+}
+
+// applyBackgroundRefresh swaps in the refreshed rows while keeping the
+// currently selected PR selected. If that PR is no longer part of the results
+// the selection stays at the same position in the list.
+func (m *Model) applyBackgroundRefresh(msg BackgroundRefreshMsg) {
+	if msg.SectionId != m.Id || msg.Seq != m.fetchSeq {
+		// a newer fetch was started (or finished) in the meantime
+		return
+	}
+	// make sure the same result is never applied twice
+	m.fetchSeq++
+
+	if msg.Err != nil {
+		log.Error("failed refreshing PRs in the background", "section", m.Id, "err", msg.Err)
+		return
+	}
+
+	currIdx := m.Table.GetCurrItem()
+	selectedUrl := ""
+	if currIdx >= 0 && currIdx < len(m.Prs) && m.Prs[currIdx].Primary != nil {
+		selectedUrl = m.Prs[currIdx].Primary.Url
+	}
+
+	// keep the data that was already fetched for the sidebar, otherwise it
+	// would flash back to its loading state on every refresh
+	enriched := make(map[string]prrow.Data, len(m.Prs))
+	for _, pr := range m.Prs {
+		if pr.IsEnriched && pr.Primary != nil {
+			enriched[pr.Primary.Url] = pr
+		}
+	}
+
+	prs := make([]prrow.Data, 0, len(msg.Prs))
+	newIdx := -1
+	for i := range msg.Prs {
+		pr := msg.Prs[i]
+		row := prrow.Data{Primary: &pr}
+		if prev, ok := enriched[pr.Url]; ok {
+			row.Enriched = prev.Enriched
+			row.IsEnriched = true
+		}
+		if newIdx == -1 && selectedUrl != "" && pr.Url == selectedUrl {
+			newIdx = i
+		}
+		prs = append(prs, row)
+	}
+	if newIdx == -1 {
+		newIdx = currIdx
+	}
+
+	m.Prs = prs
+	m.TotalCount = msg.TotalCount
+	m.PageInfo = &msg.PageInfo
+	m.LastFetch.At = time.Now()
+	m.Table.SetRows(m.BuildRows())
+	m.Table.SetCurrItem(newIdx)
+	m.Table.SetLastUpdated(time.Now())
+	m.UpdateTotalItemsCount(m.TotalCount)
+}
+
+// GetCurrRowUrl returns the URL of the selected PR, or an empty string when
+// nothing is selected.
+func (m *Model) GetCurrRowUrl() string {
+	idx := m.Table.GetCurrItem()
+	if idx < 0 || idx >= len(m.Prs) || m.Prs[idx].Primary == nil {
+		return ""
+	}
+	return m.Prs[idx].Primary.Url
+}
+
+// RefreshAllSectionsInBackground refreshes all the given sections without
+// showing their loading state.
+func RefreshAllSectionsInBackground(sections []section.Section) tea.Cmd {
+	cmds := make([]tea.Cmd, 0, len(sections))
+	for _, prSection := range section.ToImplSections[*Model](sections) {
+		cmds = append(cmds, prSection.RefreshInBackground())
+	}
+	return tea.Batch(cmds...)
 }
 
 func GetSectionColumns(
@@ -413,6 +572,8 @@ func (m Model) BuildRows() []table.Row {
 			Ctx:     m.Ctx,
 			Data:    &currPr,
 			Columns: m.Table.Columns, ShowAuthorIcon: m.ShowAuthorIcon,
+			// every row is from the current repo, no need to repeat its name
+			HideRepoName: m.IsFilteredByCurrentRemote,
 		}
 		rows = append(
 			rows,
@@ -458,6 +619,7 @@ func (m *Model) FetchNextPageSectionRows() []tea.Cmd {
 	}
 
 	var cmds []tea.Cmd
+	m.fetchSeq++
 
 	startCursor := time.Now().String()
 	if m.PageInfo != nil {
@@ -519,6 +681,7 @@ func (m *Model) FetchNextPageSectionRows() []tea.Cmd {
 }
 
 func (m *Model) ResetRows() {
+	m.fetchSeq++
 	m.Prs = nil
 	m.BaseModel.ResetRows()
 }

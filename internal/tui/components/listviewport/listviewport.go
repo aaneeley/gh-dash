@@ -87,6 +87,30 @@ func (m *Model) GetCurrItem() int {
 	return m.currId
 }
 
+// SetCurrItem moves the selection to the given item without resetting the
+// scroll position. The viewport is only scrolled when the item would
+// otherwise be out of view.
+func (m *Model) SetCurrItem(id int) int {
+	id = utils.Max(utils.Min(id, m.NumCurrentItems-1), 0)
+	m.currId = id
+
+	perPage := m.getNumPrsPerPage()
+	if m.ListItemHeight == 0 || perPage == 0 {
+		return m.currId
+	}
+
+	top := m.viewport.YOffset() / m.ListItemHeight
+	if id < top {
+		m.viewport.SetYOffset(id * m.ListItemHeight)
+	} else if id >= top+perPage {
+		m.viewport.SetYOffset((id - perPage + 1) * m.ListItemHeight)
+	}
+
+	m.topBoundId = m.viewport.YOffset() / m.ListItemHeight
+	m.bottomBoundId = utils.Min(m.NumCurrentItems-1, m.topBoundId+perPage-1)
+	return m.currId
+}
+
 func (m *Model) NextItem() int {
 	atBottomOfViewport := m.currId >= m.bottomBoundId
 	if atBottomOfViewport {

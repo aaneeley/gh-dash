@@ -770,6 +770,9 @@ func (m *Model) SetSummaryViewLess() {
 }
 
 func (m *Model) SetEnrichedPR(data data.EnrichedPullRequestData) {
+	if m.pr == nil || m.pr.Data == nil || m.pr.Data.Primary == nil {
+		return
+	}
 	if m.pr.Data.Primary.Url == data.Url {
 		m.pr.Data.Enriched = data
 		m.pr.Data.IsEnriched = true

@@ -78,6 +78,14 @@ export function GET() {
           minimum: 0,
           default: 30,
         },
+        selectedPrRefetchIntervalSeconds: {
+          title: "Selected PR Refetch Interval in Seconds",
+          description:
+            "Specifies how often to refetch the currently selected PR in seconds.",
+          type: "integer",
+          minimum: 0,
+          default: 15,
+        },
         dateFormat: {
           title: "Date format",
           description: "Specifies how dates are formatted.",

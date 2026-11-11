@@ -727,12 +727,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		cmds = append(cmds, fetchSectionsCmds, m.tabs.Init(), fetchUser,
-			m.doRefreshAtInterval(), m.doUpdateFooterAtInterval())
+			m.doRefreshAtInterval(), m.doUpdateFooterAtInterval(),
+			m.doRefreshSelectedPrAtInterval())
 
 	case intervalRefresh:
-		fetchSectionsCmds := m.fetchAllViewSections()
-		m.updateTabs()
-		cmds = append(cmds, fetchSectionsCmds, m.doRefreshAtInterval())
+		if m.ctx.View == config.PRsView {
+			// PRs are refreshed in the background: no loading spinner and
+			// the selection is kept, see prssection.BackgroundRefreshMsg
+			cmds = append(cmds, prssection.RefreshAllSectionsInBackground(m.prs))
+		} else {
+			fetchSectionsCmds := m.fetchAllViewSections()
+			m.updateTabs()
+			cmds = append(cmds, fetchSectionsCmds)
+		}
+		cmds = append(cmds, m.doRefreshAtInterval())
+
+	case selectedPrRefresh:
+		cmds = append(cmds, m.refreshSelectedPr(), m.doRefreshSelectedPrAtInterval())
+
+	case prssection.BackgroundRefreshMsg:
+		cmds = append(cmds, m.onPrsRefreshedInBackground(msg))
 
 	case userFetchedMsg:
 		m.ctx.User = msg.user
@@ -766,7 +780,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case prview.EnrichedPrMsg:
 		if msg.Err == nil {
 			m.prView.SetEnrichedPR(msg.Data)
-			m.prs[msg.Id].(*prssection.Model).EnrichPR(msg.Data)
+			// the same PR can be listed in more than one section
+			for _, s := range section.ToImplSections[*prssection.Model](m.prs) {
+				s.EnrichPR(msg.Data)
+			}
 			syncCmd := m.syncSidebar()
 			cmds = append(cmds, syncCmd)
 		} else {
@@ -1777,6 +1794,73 @@ func (m *Model) doRefreshAtInterval() tea.Cmd {
 			return intervalRefresh(t)
 		},
 	)
+}
+
+type selectedPrRefresh time.Time
+
+func (m *Model) doRefreshSelectedPrAtInterval() tea.Cmd {
+	interval := m.ctx.Config.Defaults.SelectedPrRefetchIntervalSeconds
+	if interval <= 0 {
+		return nil
+	}
+
+	return tea.Tick(
+		time.Second*time.Duration(interval),
+		func(t time.Time) tea.Msg {
+			return selectedPrRefresh(t)
+		},
+	)
+}
+
+// refreshSelectedPr refetches only the PR that is currently selected in the
+// PRs view. The result is handled like any other enriched PR, which updates
+// both the sidebar and the PR's row in the list.
+func (m *Model) refreshSelectedPr() tea.Cmd {
+	if m.ctx.View != config.PRsView {
+		return nil
+	}
+	row, ok := m.getCurrRowData().(*prrow.Data)
+	if !ok || row == nil || row.Primary == nil {
+		return nil
+	}
+
+	url := row.Primary.Url
+	sectionId := m.currSectionId
+	return func() tea.Msg {
+		d, err := data.FetchPullRequest(url)
+		return prview.EnrichedPrMsg{
+			Id:   sectionId,
+			Type: prssection.SectionType,
+			Data: d,
+			Err:  err,
+		}
+	}
+}
+
+// onPrsRefreshedInBackground applies the result of a background refresh to its
+// section. The sidebar is only reset when the refresh changed which PR is
+// selected, i.e. when the selected PR is no longer part of the section.
+func (m *Model) onPrsRefreshedInBackground(msg prssection.BackgroundRefreshMsg) tea.Cmd {
+	if msg.SectionId < 0 || msg.SectionId >= len(m.prs) {
+		return nil
+	}
+	s, ok := m.prs[msg.SectionId].(*prssection.Model)
+	if !ok {
+		return nil
+	}
+
+	isCurrSection := m.ctx.View == config.PRsView && msg.SectionId == m.currSectionId
+	prevUrl := s.GetCurrRowUrl()
+	_, cmd := s.Update(msg)
+	m.updateTabs()
+
+	if !isCurrSection {
+		return cmd
+	}
+	if s.GetCurrRowUrl() != prevUrl {
+		return tea.Batch(cmd, m.onViewedRowChanged())
+	}
+	return tea.Batch(cmd, m.syncSidebar(), m.prView.EnrichCurrRow())
 }
 
 type updateFooterMsg struct{}

@@ -1,6 +1,7 @@
 package listviewport
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -127,5 +128,68 @@ func TestNextItemAtLastItem(t *testing.T) {
 
 	if m.GetCurrItem() != 9 {
 		t.Errorf("expected currId=9, got %d", m.GetCurrItem())
+	}
+}
+
+func TestSetCurrItemKeepsScrollPositionWhenVisible(t *testing.T) {
+	m := newTestModel(testModelOpts{numItems: 20, viewportHeight: 10, itemHeight: 2})
+	m.SyncViewPort(strings.Repeat("row\n", 40))
+
+	// scroll down so that items 3-7 are visible
+	for range 7 {
+		m.NextItem()
+	}
+	if m.viewport.YOffset() != 6 {
+		t.Fatalf("expected the viewport to be scrolled to line 6, got %d", m.viewport.YOffset())
+	}
+
+	// selecting another visible item must not scroll
+	if got := m.SetCurrItem(4); got != 4 {
+		t.Fatalf("expected currId=4, got %d", got)
+	}
+	if m.viewport.YOffset() != 6 {
+		t.Errorf("expected the scroll position to be kept, got %d", m.viewport.YOffset())
+	}
+	if m.topBoundId != 3 || m.bottomBoundId != 7 {
+		t.Errorf("expected bounds 3-7, got %d-%d", m.topBoundId, m.bottomBoundId)
+	}
+}
+
+func TestSetCurrItemScrollsHiddenItemIntoView(t *testing.T) {
+	m := newTestModel(testModelOpts{numItems: 20, viewportHeight: 10, itemHeight: 2})
+	m.SyncViewPort(strings.Repeat("row\n", 40))
+
+	// below the viewport: the item becomes the last visible one
+	m.SetCurrItem(12)
+	if m.viewport.YOffset() != 16 {
+		t.Errorf("expected the viewport to be scrolled to line 16, got %d", m.viewport.YOffset())
+	}
+	if m.topBoundId != 8 || m.bottomBoundId != 12 {
+		t.Errorf("expected bounds 8-12, got %d-%d", m.topBoundId, m.bottomBoundId)
+	}
+
+	// above the viewport: the item becomes the first visible one
+	m.SetCurrItem(2)
+	if m.viewport.YOffset() != 4 {
+		t.Errorf("expected the viewport to be scrolled to line 4, got %d", m.viewport.YOffset())
+	}
+	if m.topBoundId != 2 || m.bottomBoundId != 6 {
+		t.Errorf("expected bounds 2-6, got %d-%d", m.topBoundId, m.bottomBoundId)
+	}
+}
+
+func TestSetCurrItemClampsToAvailableItems(t *testing.T) {
+	m := newTestModel(testModelOpts{numItems: 3, viewportHeight: 10, itemHeight: 1})
+
+	if got := m.SetCurrItem(10); got != 2 {
+		t.Errorf("expected currId to be clamped to 2, got %d", got)
+	}
+	if got := m.SetCurrItem(-1); got != 0 {
+		t.Errorf("expected currId to be clamped to 0, got %d", got)
+	}
+
+	m.SetNumItems(0)
+	if got := m.SetCurrItem(5); got != 0 {
+		t.Errorf("expected currId=0 for an empty list, got %d", got)
 	}
 }

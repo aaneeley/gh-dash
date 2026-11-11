@@ -192,7 +192,10 @@ type Defaults struct {
 	View                   ViewType      `yaml:"view"`
 	Layout                 LayoutConfig  `yaml:"layout,omitempty"`
 	RefetchIntervalMinutes int           `yaml:"refetchIntervalMinutes,omitempty"`
-	DateFormat             string        `yaml:"dateFormat,omitempty"`
+	// SelectedPrRefetchIntervalSeconds controls how often the currently
+	// selected PR is refreshed in the background. 0 disables it.
+	SelectedPrRefetchIntervalSeconds int    `yaml:"selectedPrRefetchIntervalSeconds"`
+	DateFormat                       string `yaml:"dateFormat,omitempty"`
 }
 
 type RepoConfig struct {
@@ -352,12 +355,13 @@ func (parser ConfigParser) getDefaultConfig() Config {
 				Height:   0.60,
 				Position: "auto",
 			},
-			PrsLimit:               20,
-			PrApproveComment:       "LGTM",
-			IssuesLimit:            20,
-			NotificationsLimit:     20,
-			View:                   PRsView,
-			RefetchIntervalMinutes: 30,
+			PrsLimit:                         20,
+			PrApproveComment:                 "LGTM",
+			IssuesLimit:                      20,
+			NotificationsLimit:               20,
+			View:                             PRsView,
+			RefetchIntervalMinutes:           30,
+			SelectedPrRefetchIntervalSeconds: 15,
 			Layout: LayoutConfig{
 				Prs: PrsLayoutConfig{
 					UpdatedAt: ColumnConfig{

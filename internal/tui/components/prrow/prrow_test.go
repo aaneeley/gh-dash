@@ -6,6 +6,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/compat"
+	"github.com/charmbracelet/x/ansi"
 	graphql "github.com/cli/shurcooL-graphql"
 	checks "github.com/dlvhdr/x/gh-checks"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/components/table"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/constants"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/context"
+	"github.com/dlvhdr/gh-dash/v4/internal/tui/theme"
 )
 
 func TestGetStatusChecksRollup(t *testing.T) {
@@ -312,4 +314,49 @@ func TestRenderLabels(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRenderExtendedTitleRepoName(t *testing.T) {
+	cfg := &config.Config{Theme: &config.ThemeConfig{}}
+	newRow := func(hideRepoName bool) *PullRequest {
+		primary := &data.PullRequestData{
+			Number:      42,
+			Title:       "my title",
+			HeadRefName: "my-branch",
+		}
+		primary.Author.Login = "octocat"
+		primary.Repository.NameWithOwner = "dlvhdr/gh-dash"
+		return &PullRequest{
+			Ctx:          &context.ProgramContext{Config: cfg, Theme: *theme.DefaultTheme},
+			Data:         &Data{Primary: primary},
+			Columns:      []table.Column{{Title: "Title", Grow: new(true), ComputedWidth: 80}},
+			HideRepoName: hideRepoName,
+		}
+	}
+
+	t.Run("shows the repo name by default", func(t *testing.T) {
+		lines := strings.Split(ansi.Strip(newRow(false).renderExtendedTitle(false)), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("expected 2 rows, got %d: %q", len(lines), lines)
+		}
+		if got := strings.TrimSpace(lines[0]); got != "dlvhdr/gh-dash #42 by @octocat · my-branch" {
+			t.Errorf("unexpected top row %q", got)
+		}
+		if got := strings.TrimSpace(lines[1]); got != "my title" {
+			t.Errorf("unexpected title row %q", got)
+		}
+	})
+
+	t.Run("omits the repo name when asked to", func(t *testing.T) {
+		lines := strings.Split(ansi.Strip(newRow(true).renderExtendedTitle(false)), "\n")
+		if len(lines) != 2 {
+			t.Fatalf("expected 2 rows, got %d: %q", len(lines), lines)
+		}
+		if got := strings.TrimSpace(lines[0]); got != "#42 by @octocat · my-branch" {
+			t.Errorf("unexpected top row %q", got)
+		}
+		if got := strings.TrimSpace(lines[1]); got != "my title" {
+			t.Errorf("unexpected title row %q", got)
+		}
+	})
 }

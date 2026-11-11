@@ -62,6 +62,8 @@ type EnrichedPullRequestData struct {
 	Reviews            Reviews                    `graphql:"reviews(last: 100)"`
 	SuggestedReviewers []SuggestedReviewer
 	Files              ChangedFiles `graphql:"files(first: 20)"`
+	IsInMergeQueue     bool
+	MergeStateStatus   MergeStateStatus `graphql:"mergeStateStatus"`
 }
 
 type PullRequestData struct {
@@ -304,6 +306,7 @@ type ReviewThreadsWithComments struct {
 		Path         string
 		Comments     ReviewComments `graphql:"comments(first: 20)"`
 	}
+	TotalCount int
 }
 
 type ChangedFile struct {
@@ -471,6 +474,33 @@ func (e EnrichedPullRequestData) ToPullRequestData() PullRequestData {
 		// have different types in EnrichedPullRequestData vs PullRequestData
 		// We leave them as zero values since the enriched data will be used instead
 	}
+}
+
+// ToListPullRequestData converts EnrichedPullRequestData to the
+// PullRequestData shape used by the PR list, including the fields whose types
+// differ between the two (counts and the last commit's checks rollup). It is
+// used to refresh a single row of the list from a single-PR fetch.
+func (e EnrichedPullRequestData) ToListPullRequestData() PullRequestData {
+	pr := e.ToPullRequestData()
+	pr.IsInMergeQueue = e.IsInMergeQueue
+	pr.MergeStateStatus = e.MergeStateStatus
+	pr.Comments = Comments{TotalCount: int(e.Comments.TotalCount)}
+	pr.ReviewThreads = ReviewThreads{TotalCount: e.ReviewThreads.TotalCount}
+	pr.Reviews = ReviewsNumber{TotalCount: e.Reviews.TotalCount}
+	pr.ReviewRequests = ReviewRequestsNumber{TotalCount: e.ReviewRequests.TotalCount}
+
+	pr.Commits.Nodes = make([]struct {
+		Commit struct {
+			StatusCheckRollup struct {
+				State graphql.String
+			}
+		}
+	}, len(e.Commits.Nodes))
+	for i, node := range e.Commits.Nodes {
+		pr.Commits.Nodes[i].Commit.StatusCheckRollup.State = node.Commit.StatusCheckRollup.State
+	}
+
+	return pr
 }
 
 func makePullRequestsQuery(query string) string {

@@ -204,9 +204,28 @@ By default, the dashboard refetches work items every 30 minutes.
 
 To disable the refetching interval set it to 0.
 
+In the PRs view this refetch happens in the background: the list stays on screen instead of
+being replaced by a loading indicator, and the PR you have selected stays selected, even if
+it moves to another position in the list. If the selected PR is no longer part of the
+section, the selection stays at the same position in the list.
+
 You can always use the [refresh current section] or [refresh all sections] command to
 refetch work items in the current view. If you change the search query for a view, the
 dashboard fetches results for the updated query immediately.
+
+### Selected PR Refetch Interval in Seconds (`selectedPrRefetchIntervalSeconds`)
+
+| Type    | Minimum | Default |
+| :------ | :-----: | :-----: |
+| Integer |    0    |   15    |
+
+This setting defines how often the dashboard refetches the PR that is currently selected in
+the PRs view. Only that PR is fetched, which updates both its row in the list and the
+preview pane, including its status and checks.
+
+By default, the selected PR is refetched every 15 seconds.
+
+To disable refetching the selected PR set it to 0.
 
 [refresh current section]: /getting-started/keybindings/global/#r---refresh-current-section
 [refresh all sections]: /getting-started/keybindings/global/#r---refresh-all-sections

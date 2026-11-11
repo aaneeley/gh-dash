@@ -24,6 +24,9 @@ type PullRequest struct {
 	Branch         git.Branch
 	Columns        []table.Column
 	ShowAuthorIcon bool
+	// HideRepoName omits the repo name from the non-compact row, for sections
+	// where every PR belongs to the same (current) repo.
+	HideRepoName bool
 }
 
 func (pr *PullRequest) getTextStyle() lipgloss.Style {
@@ -195,8 +198,11 @@ func (pr *PullRequest) renderExtendedTitle(isSelected bool) string {
 
 	author := baseStyle.Bold(true).Render(fmt.Sprintf("@%s",
 		pr.Data.Primary.GetAuthor(pr.Ctx.Theme, pr.ShowAuthorIcon)))
-	top := lipgloss.JoinHorizontal(lipgloss.Top, pr.Data.Primary.Repository.NameWithOwner,
-		fmt.Sprintf(" #%d by %s", pr.Data.Primary.Number, author))
+	top := fmt.Sprintf("#%d by %s", pr.Data.Primary.Number, author)
+	if !pr.HideRepoName {
+		top = lipgloss.JoinHorizontal(lipgloss.Top,
+			pr.Data.Primary.Repository.NameWithOwner, " ", top)
+	}
 	branchHidden := pr.Ctx.Config.Defaults.Layout.Prs.Base.Hidden
 	if branchHidden == nil || !*branchHidden {
 		branch := baseStyle.Render(pr.Data.Primary.HeadRefName)
