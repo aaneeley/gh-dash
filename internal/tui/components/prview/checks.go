@@ -130,8 +130,16 @@ func (m *Model) viewChecksStatus() (string, checkSectionStatus) {
 			strings.Join(statStrs, ", "),
 			checksBar,
 		)
+		details := make([]string, 0, 2)
 		if failed := m.viewFailedChecks(); failed != "" {
-			checksBottom = lipgloss.JoinVertical(lipgloss.Left, checksBottom, "", failed)
+			details = append(details, failed)
+		}
+		if running := m.viewInProgressChecks(); running != "" {
+			details = append(details, running)
+		}
+		if len(details) > 0 {
+			checksBottom = lipgloss.JoinVertical(lipgloss.Left, checksBottom, "",
+				strings.Join(details, "\n"))
 		}
 		checks = m.viewCheckCategory(icon, title, checksBottom, false)
 	}
@@ -311,14 +319,7 @@ func (m *Model) failedCheckNames() []string {
 				!isFailedCheckState(string(checkRun.Conclusion)) {
 				continue
 			}
-			name := strings.TrimSpace(string(checkRun.Name))
-			workflow := strings.TrimSpace(string(checkRun.CheckSuite.WorkflowRun.Workflow.Name))
-			if workflow != "" && name != "" {
-				name = workflow + " / " + name
-			} else if name == "" {
-				name = workflow
-			}
-			names = append(names, name)
+			names = append(names, checkRunSummaryName(checkRun))
 		case "StatusContext":
 			if !isFailedCheckState(string(node.StatusContext.State)) {
 				continue
@@ -331,7 +332,78 @@ func (m *Model) failedCheckNames() []string {
 
 // viewFailedChecks lists the checks that failed, one per line.
 func (m *Model) viewFailedChecks() string {
-	names := m.failedCheckNames()
+	return m.viewCheckNames(m.failedCheckNames(), m.ctx.Styles.Common.FailureGlyph)
+}
+
+func checkRunSummaryName(checkRun data.CheckRun) string {
+	name := strings.TrimSpace(string(checkRun.Name))
+	workflow := strings.TrimSpace(string(checkRun.CheckSuite.WorkflowRun.Workflow.Name))
+	if workflow != "" && name != "" {
+		return workflow + " / " + name
+	}
+	if name == "" {
+		return workflow
+	}
+	return name
+}
+
+// inProgressCheckNames also includes real queued workflows that do not have
+// jobs yet. Empty suites created for installed apps are not real pending work.
+func (m *Model) inProgressCheckNames() []string {
+	if !m.hasData() || !m.pr.Data.IsEnriched {
+		return nil
+	}
+	commits := m.pr.Data.Enriched.Commits.Nodes
+	if len(commits) == 0 {
+		return nil
+	}
+	commit := commits[0].Commit
+	names := make([]string, 0)
+	reportedWorkflows := make(map[string]bool)
+	for _, node := range commit.StatusCheckRollup.Contexts.Nodes {
+		switch node.Typename {
+		case "CheckRun":
+			if ghchecks.IsStatusWaiting(string(node.CheckRun.Status)) {
+				names = append(names, checkRunSummaryName(node.CheckRun))
+				workflow := strings.TrimSpace(string(node.CheckRun.CheckSuite.WorkflowRun.Workflow.Name))
+				reportedWorkflows[workflow] = true
+			}
+		case "StatusContext":
+			if ghchecks.IsStatusWaiting(string(node.StatusContext.State)) {
+				names = append(names, strings.TrimSpace(string(node.StatusContext.Context)))
+			}
+		}
+	}
+	for _, suite := range commit.CheckSuites.Nodes {
+		if isNeverDispatchedCheckSuite(suite) || suite.Conclusion == "ACTION_REQUIRED" {
+			continue
+		}
+		if suite.Status != "QUEUED" && suite.Status != "PENDING" && suite.Status != "WAITING" {
+			continue
+		}
+		workflow := strings.TrimSpace(string(suite.WorkflowRun.Workflow.Name))
+		if workflow != "" && reportedWorkflows[workflow] {
+			continue
+		}
+		name := workflow
+		if name == "" {
+			name = strings.TrimSpace(string(suite.App.Name))
+		}
+		if name == "" {
+			name = "Workflow"
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+func (m *Model) viewInProgressChecks() string {
+	glyph := lipgloss.NewStyle().Foreground(m.ctx.Theme.WarningText).
+		Render(m.checkSpinner.View())
+	return m.viewCheckNames(m.inProgressCheckNames(), glyph)
+}
+
+func (m *Model) viewCheckNames(names []string, glyph string) string {
 	if len(names) == 0 {
 		return ""
 	}
@@ -341,8 +413,8 @@ func (m *Model) viewFailedChecks() string {
 	name := lipgloss.NewStyle().Foreground(m.ctx.Theme.SecondaryText)
 	lines := make([]string, 0, len(names))
 	for _, n := range names {
-		lines = append(lines, m.ctx.Styles.Common.FailureGlyph+" "+
-			name.Render(ansi.Truncate(n, max(0, width-2), constants.Ellipsis)))
+		lines = append(lines, glyph+" "+
+			name.Render(ansi.Truncate(n, max(0, width-lipgloss.Width(glyph)-1), constants.Ellipsis)))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }

@@ -186,6 +186,37 @@ func (m *Model) Init() tea.Cmd {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Frames update only the preview, avoiding table rebuilds, API calls and
+	// editor/scroll resets. All other events retain the usual update path.
+	if tick, ok := msg.(prview.ChecksSpinnerTickMsg); ok {
+		startCmd := m.prView.SyncChecksSpinner(m.isPRPreviewVisible())
+		cmd := m.prView.TickChecksSpinner(tick)
+		if cmd != nil {
+			m.sidebar.SetContent(m.prView.View())
+		}
+		return m, tea.Batch(startCmd, cmd)
+	}
+	model, cmd := m.update(msg)
+	return model, tea.Batch(cmd, m.prView.SyncChecksSpinner(m.isPRPreviewVisible()))
+}
+
+func (m *Model) isPRPreviewVisible() bool {
+	if m.ctx == nil || !m.sidebar.IsOpen {
+		return false
+	}
+	switch m.ctx.View {
+	case config.PRsView:
+		row, ok := m.getCurrRowData().(*prrow.Data)
+		return ok && row != nil && row.Primary != nil
+	case config.NotificationsView:
+		row, ok := m.getCurrRowData().(*notificationrow.Data)
+		return ok && row != nil && m.notificationView.GetSubjectId() == row.GetId() &&
+			m.notificationView.GetSubjectPR() != nil
+	}
+	return false
+}
+
+func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		cmd             tea.Cmd
 		tabsCmd         tea.Cmd

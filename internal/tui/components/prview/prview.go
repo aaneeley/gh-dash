@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -40,6 +41,8 @@ type Model struct {
 	carousel        carousel.Model
 	editor          cmpcontroller.Controller
 	summaryViewMore bool
+	checkSpinner    spinner.Model
+	checksAnimating bool
 }
 
 var tabs = []string{" Overview", " Activity", " Commits", " Checks", " Files Changed"}
@@ -54,10 +57,11 @@ func NewModel(ctx *context.ProgramContext) Model {
 	cmp := cmpcontroller.New(ctx, inputbox.ModelOpts{TextArea: &ta})
 
 	return Model{
-		ctx:      ctx,
-		pr:       nil,
-		carousel: c,
-		editor:   cmp,
+		ctx:          ctx,
+		pr:           nil,
+		carousel:     c,
+		editor:       cmp,
+		checkSpinner: spinner.New(spinner.WithSpinner(spinner.MiniDot)),
 	}
 }
 

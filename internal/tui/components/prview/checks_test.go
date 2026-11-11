@@ -707,9 +707,11 @@ func TestViewChecksStatus_ListsFailedChecks(t *testing.T) {
 	for _, name := range []string{"CI / unit tests", "Deploy / preview", "legacy check"} {
 		require.Contains(t, plain, name)
 	}
-	for _, name := range []string{"lint", "docs", "still running"} {
+	for _, name := range []string{"lint", "docs"} {
 		require.NotContains(t, plain, name)
 	}
+	require.Contains(t, plain, "still running")
+	require.Less(t, strings.Index(plain, "legacy check"), strings.Index(plain, "still running"))
 	// the list comes after the counts and the bar
 	require.Less(t, strings.Index(plain, "▃"), strings.Index(plain, "CI / unit tests"))
 }
@@ -772,6 +774,65 @@ func TestFailedCheckNames_StatusContexts(t *testing.T) {
 	require.Equal(t, statusFailure, status)
 	require.Contains(t, ansi.Strip(view), "2 failing")
 	require.Contains(t, ansi.Strip(view), "security scan")
+	require.Equal(t, []string{"waiting"}, m.inProgressCheckNames())
+}
+
+func TestViewChecksStatus_ListsInProgressChecksWithoutFailures(t *testing.T) {
+	running := makeWorkflowCheckRun("CI", "unit tests", "")
+	running.Status = "IN_PROGRESS"
+	m := newTestModelForChecks(t, checksTestOptions{
+		checkRuns: []data.CheckRun{
+			running,
+			makeCheckRun("queued job", "QUEUED", ""),
+			makeCheckRun("pending job", "PENDING", ""),
+			makeCheckRun("waiting job", "WAITING", ""),
+			makeWorkflowCheckRun("CI", "lint", "SUCCESS"),
+			makeWorkflowCheckRun("CI", "docs", "SKIPPED"),
+		},
+	})
+
+	require.Equal(t, []string{"CI / unit tests", "queued job", "pending job", "waiting job"},
+		m.inProgressCheckNames())
+	view, status := m.viewChecksStatus()
+	require.Equal(t, statusWaiting, status)
+	plain := ansi.Strip(view)
+	require.Contains(t, plain, "4 in progress")
+	require.Contains(t, plain, "⠋ CI / unit tests")
+	require.Less(t, strings.Index(plain, "▃"), strings.Index(plain, "CI / unit tests"))
+	require.NotContains(t, plain, "CI / lint")
+	require.NotContains(t, plain, "CI / docs")
+
+	m.pr.Data.IsEnriched = false
+	require.Empty(t, m.inProgressCheckNames())
+}
+
+func TestInProgressChecks_QueuedSuites(t *testing.T) {
+	running := makeWorkflowCheckRun("CI", "tests", "")
+	running.Status = "IN_PROGRESS"
+	m := newTestModelForChecks(t, checksTestOptions{
+		checkRuns: []data.CheckRun{running},
+		checkSuites: data.CheckSuites{Nodes: []data.CheckSuiteNode{
+			makeEmptyCheckSuite("QUEUED", ""),  // phantom installed-app suite
+			makeCheckSuite("CI", "QUEUED", ""), // already represented by the job
+			makeCheckSuite("Deploy", "QUEUED", ""),
+			makeCheckSuite("Release", "WAITING", ""),
+			makeCheckSuite("Needs approval", "QUEUED", "ACTION_REQUIRED"),
+			makeCheckSuite("Completed", "COMPLETED", "SUCCESS"),
+		}},
+	})
+	require.Equal(t, []string{"CI / tests", "Deploy", "Release"}, m.inProgressCheckNames())
+}
+
+func TestViewInProgressChecks_LongNamesFitAvailableWidth(t *testing.T) {
+	m := newTestModelForChecks(t, checksTestOptions{
+		checkRuns: []data.CheckRun{makeCheckRun(strings.Repeat("long job ", 30), "IN_PROGRESS", "")},
+	})
+	for _, width := range []int{40, 80, 120} {
+		m.width = width
+		view := m.viewInProgressChecks()
+		require.LessOrEqual(t, lipgloss.Width(view), m.getIndentedContentWidth()-8)
+		require.Contains(t, ansi.Strip(view), constants.Ellipsis)
+	}
 }
 
 func TestViewFailedChecks_LongNamesFitAvailableWidth(t *testing.T) {

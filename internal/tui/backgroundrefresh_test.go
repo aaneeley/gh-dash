@@ -271,3 +271,53 @@ func TestDoRefreshSelectedPrAtInterval_CanBeDisabled(t *testing.T) {
 	m.ctx.Config.Defaults.SelectedPrRefetchIntervalSeconds = 0
 	require.Nil(t, m.doRefreshSelectedPrAtInterval())
 }
+
+func TestChecksSpinner_TicksLocallyWithoutResettingPreview(t *testing.T) {
+	m, s := newBackgroundRefreshTestModel(t, 1, 2, 3)
+	github := &mockGitHub{}
+	setMockGitHub(t, github)
+	var enriched data.EnrichedPullRequestData
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"url": "https://github.com/dlvhdr/gh-dash/pull/2",
+		"number": 2, "title": "PR with pending checks", "state": "OPEN",
+		"commits": {"nodes": [{"commit": {"statusCheckRollup": {"contexts": {
+			"checkRunCountsByState": [{"state": "IN_PROGRESS", "count": 1}],
+			"nodes": [{"Typename": "CheckRun", "CheckRun": {
+				"name": "running tests", "status": "IN_PROGRESS"
+			}}]
+		}}}}]}
+	}`), &enriched))
+	s.EnrichPR(enriched)
+	s.NextRow()
+	m.syncSidebar()
+	m.prView.GoToActivityTab()
+	m.Update(tea.KeyPressMsg{Text: "]"}) // Commits
+	m.Update(tea.KeyPressMsg{Text: "]"}) // Checks (early-return update path)
+	selectedTab := m.prView.SelectedTab()
+	m.sidebar.ScrollToPercent(0.5)
+	scroll := m.sidebar.YOffset()
+	before := m.sidebar.View()
+
+	// Deliver one of this spinner's frames, without any keyboard input or
+	// GitHub responses. The view must still advance while otherwise idle.
+	// The tab key above already started the loop, so re-sync cannot start one.
+	require.Nil(t, m.prView.SyncChecksSpinner(true))
+
+	// Start with a fresh animation to obtain its initial scheduled message.
+	m.prView.SyncChecksSpinner(false)
+	start := m.prView.SyncChecksSpinner(true)
+	require.NotNil(t, start)
+	_, next := m.Update(start())
+	require.NotNil(t, next)
+	require.NotEqual(t, before, m.sidebar.View())
+	require.Equal(t, scroll, m.sidebar.YOffset())
+	require.Equal(t, selectedTab, m.prView.SelectedTab())
+	require.Equal(t, testPrUrl(2), s.GetCurrRowUrl())
+	require.Empty(t, github.requests, "animation must never refetch from GitHub")
+	require.False(t, s.Table.IsLoading())
+
+	// Hiding the preview stops the loop and ignores any pending frames.
+	m.sidebar.IsOpen = false
+	_, cmd := m.Update(next())
+	require.Nil(t, cmd)
+}
