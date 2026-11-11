@@ -673,4 +673,3 @@ func TestRenderChecks_NeverDispatchedMixedWithQueued(t *testing.T) {
 	require.False(t, strings.Contains(got, "Workflow"),
 		"expected no 'Workflow' placeholder, got: %q", got)
 }
-
