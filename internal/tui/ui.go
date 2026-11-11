@@ -1866,8 +1866,9 @@ func (m *Model) onPrsRefreshedInBackground(msg prssection.BackgroundRefreshMsg) 
 type updateFooterMsg struct{}
 
 func (m *Model) doUpdateFooterAtInterval() tea.Cmd {
+	// every second, so the "Updated ~Ns ago" counter doesn't jump while idle
 	return tea.Tick(
-		time.Second*10,
+		time.Second,
 		func(t time.Time) tea.Msg {
 			return updateFooterMsg{}
 		},
