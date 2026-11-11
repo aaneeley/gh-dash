@@ -3,12 +3,14 @@ package prview
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/dlvhdr/gh-dash/v4/internal/data"
+	"github.com/dlvhdr/gh-dash/v4/internal/tui/common"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/constants"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/markdown"
 	"github.com/dlvhdr/gh-dash/v4/internal/utils"
@@ -20,7 +22,7 @@ type RenderedActivity struct {
 }
 
 func (m *Model) renderActivity() string {
-	width := m.getIndentedContentWidth()
+	width := m.getQuotedContentWidth()
 	markdownRenderer := markdown.GetMarkdownRenderer(width, m.ctx)
 	bodyStyle := lipgloss.NewStyle()
 
@@ -87,7 +89,7 @@ func (m *Model) renderActivity() string {
 		for _, activity := range activities {
 			renderedActivities = append(renderedActivities, activity.RenderedString)
 		}
-		title := m.ctx.Styles.Common.MainTextStyle.MarginBottom(1).Underline(true).Render(
+		title := m.ctx.Styles.Common.MainTextStyle.MarginBottom(1).Render(
 			fmt.Sprintf("%s  %d comments", constants.CommentsIcon, len(activities)))
 		body = lipgloss.JoinVertical(lipgloss.Left, renderedActivities...)
 		body = lipgloss.JoinVertical(lipgloss.Left, title, body)
@@ -112,19 +114,18 @@ func (m *Model) renderComment(
 	comment comment,
 	markdownRenderer glamour.TermRenderer,
 ) (string, error) {
-	width := m.getIndentedContentWidth()
+	width := m.getQuotedContentWidth()
 	authorAndTime := lipgloss.NewStyle().
 		Width(width).
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(m.ctx.Theme.FaintBorder).Render(
-		lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			m.ctx.Styles.Common.MainTextStyle.Render(comment.Author),
-			" ",
-			lipgloss.NewStyle().
-				Foreground(m.ctx.Theme.FaintText).
-				Render(utils.TimeElapsed(comment.UpdatedAt)),
-		))
+		Render(
+			lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				m.ctx.Styles.Common.MainTextStyle.Render(comment.Author),
+				" ",
+				lipgloss.NewStyle().
+					Foreground(m.ctx.Theme.FaintText).
+					Render(utils.TimeElapsed(comment.UpdatedAt)),
+			))
 
 	var header string
 	if comment.Path != nil && comment.Line != nil {
@@ -143,11 +144,7 @@ func (m *Model) renderComment(
 	body := lineCleanupRegex.ReplaceAllString(comment.Body, "")
 	body, err := markdownRenderer.Render(body)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		body,
-	), err
+	return m.renderQuote(header, body), err
 }
 
 func (m *Model) renderReview(
@@ -156,11 +153,7 @@ func (m *Model) renderReview(
 ) (string, error) {
 	header := m.renderReviewHeader(review)
 	body, err := markdownRenderer.Render(review.Body)
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		body,
-	), err
+	return m.renderQuote(header, body), err
 }
 
 func (m *Model) renderReviewHeader(review data.Review) string {
@@ -187,4 +180,21 @@ func (m *Model) renderReviewDecision(decision string) string {
 	}
 
 	return ""
+}
+
+// quoteFrameWidth is the width of the bar and padding of a quoted comment.
+const quoteFrameWidth = 2
+
+func (m *Model) getQuotedContentWidth() int {
+	return max(0, m.getIndentedContentWidth()-quoteFrameWidth)
+}
+
+// renderQuote renders a comment or review with a bar on its left, followed by
+// an empty line that separates it from the next one.
+func (m *Model) renderQuote(header string, body string) string {
+	quote := common.RenderQuote(
+		lipgloss.JoinVertical(lipgloss.Left, header, "", strings.Trim(body, "\n")),
+		m.ctx.Theme.SecondaryBorder,
+	)
+	return quote + "\n"
 }

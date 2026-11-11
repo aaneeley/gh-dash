@@ -2,12 +2,14 @@ package sidebar
 
 import (
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/dlvhdr/gh-dash/v4/internal/tui/common"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/context"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/keys"
 )
@@ -55,45 +57,47 @@ func (m Model) View() string {
 		return ""
 	}
 
-	if m.ctx.PreviewPosition == "bottom" {
-		height := m.ctx.DynamicPreviewHeight
-		width := m.ctx.DynamicPreviewWidth
-		style := m.ctx.Styles.Sidebar.BottomRoot.
-			Height(height).
-			Width(width)
+	// The sidebar is a panel that is raised from the rest of the screen by
+	// its background. A gap of BorderWidth separates it from the main content.
+	height := m.ctx.MainContentHeight
+	width := m.ctx.DynamicPreviewWidth - m.ctx.Styles.Sidebar.BorderWidth
+	isBottom := m.ctx.PreviewPosition == "bottom"
+	if isBottom {
+		height = m.ctx.DynamicPreviewHeight
+		width = m.ctx.DynamicPreviewWidth
+	}
+	width = max(0, width)
 
-		if m.data == "" {
-			return style.Align(lipgloss.Center).Render(
-				lipgloss.PlaceVertical(height, lipgloss.Center, m.emptyState),
-			)
-		}
-
-		return style.Render(lipgloss.JoinVertical(
+	var content string
+	if m.data == "" {
+		content = lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center,
+			m.ctx.Styles.Common.FaintTextStyle.Render(m.emptyState))
+	} else {
+		content = lipgloss.JoinVertical(
 			lipgloss.Top,
 			m.viewport.View(),
 			m.ctx.Styles.Sidebar.PagerStyle.
 				Render(fmt.Sprintf("%d%%", int(m.viewport.ScrollPercent()*100))),
-		))
-	}
-
-	// Right mode
-	height := m.ctx.MainContentHeight
-	style := m.ctx.Styles.Sidebar.Root.
-		Height(height).
-		Width(m.ctx.DynamicPreviewWidth)
-
-	if m.data == "" {
-		return style.Align(lipgloss.Center).Render(
-			lipgloss.PlaceVertical(height, lipgloss.Center, m.emptyState),
 		)
 	}
 
-	return style.Render(lipgloss.JoinVertical(
-		lipgloss.Top,
-		m.viewport.View(),
-		m.ctx.Styles.Sidebar.PagerStyle.
-			Render(fmt.Sprintf("%d%%", int(m.viewport.ScrollPercent()*100))),
-	))
+	// The background is painted last: passing painted content through a
+	// lipgloss style with a width would strip parts of it again.
+	panel := common.PaintBackground(
+		lipgloss.NewStyle().Height(height).MaxHeight(height).Render(content),
+		m.ctx.Theme.PanelBackground,
+		width,
+	)
+
+	gap := strings.Repeat(" ", m.ctx.Styles.Sidebar.BorderWidth)
+	if isBottom {
+		return strings.Repeat("\n", m.ctx.Styles.Sidebar.BorderWidth) + panel
+	}
+	lines := strings.Split(panel, "\n")
+	for i := range lines {
+		lines[i] = gap + lines[i]
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *Model) SetContent(data string) {

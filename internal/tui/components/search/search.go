@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/dlvhdr/gh-dash/v4/internal/tui/common"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/components/cmpcontroller"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/components/fuzzyselect"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/components/inputbox"
@@ -42,7 +43,7 @@ func NewModel(ctx *context.ProgramContext, opts SearchOptions) Model {
 			Text:        lipgloss.NewStyle().Foreground(ctx.Theme.PrimaryText),
 		},
 		Cursor: textinput.CursorStyle{
-			Color: ctx.Theme.FaintText,
+			Color: ctx.Theme.Accent,
 			Shape: tea.CursorBar,
 			Blink: true,
 		},
@@ -58,9 +59,7 @@ func NewModel(ctx *context.ProgramContext, opts SearchOptions) Model {
 		inputbox.ModelOpts{TextInput: &ti},
 	)
 	selectStyles := ctx.Styles.Select
-	selectStyles.PopupStyle = ctx.Styles.Select.PopupStyle.BorderTop(false).BorderForeground(
-		ctx.Styles.Colors.OpenIssue,
-	)
+	selectStyles.PopupStyle = ctx.Styles.Select.PopupStyle.BorderTop(false)
 	ctl.SetSelectStyles(selectStyles)
 
 	m := Model{
@@ -81,16 +80,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m Model) View(ctx *context.ProgramContext) string {
 	s := m.ctx.Styles.Search.Root
-	if cmp := m.ViewCompletions(); cmp != "" {
-		b := lipgloss.RoundedBorder()
-		b.BottomLeft = lipgloss.RoundedBorder().MiddleLeft
-		b.BottomRight = lipgloss.RoundedBorder().MiddleRight
-		s = s.Border(b, true)
-	}
 	if m.cmpctl.Focused() {
-		s = s.BorderForeground(m.ctx.Styles.Colors.OpenIssue)
+		s = s.BorderForeground(m.ctx.Theme.Accent)
 	}
-	return s.Render(m.cmpctl.View())
+	// a block as high as the bordered box it replaces
+	block := common.PaintBackground(
+		"\n "+m.cmpctl.View()+"\n",
+		m.ctx.Theme.ElementBackground,
+		m.getInputWidth(ctx)+1,
+	)
+	return s.Render(block)
 }
 
 func (m Model) ViewCompletions() string {

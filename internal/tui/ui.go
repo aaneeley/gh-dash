@@ -700,7 +700,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ctx.Theme = theme.ParseTheme(m.ctx.Config)
 		m.ctx.Styles = context.InitStyles(m.ctx.Theme)
 		m.taskSpinner.Style = lipgloss.NewStyle().
-			Background(m.ctx.Theme.SelectedBackground)
+			Foreground(m.ctx.Theme.Accent)
 
 		m.ctx.View = m.ctx.Config.Defaults.View
 		m.currSectionId = 0
@@ -959,6 +959,10 @@ func (m *Model) View() tea.View {
 		)
 		return v
 	}
+
+	// the dashboard brings its own background instead of using the terminal's
+	v.BackgroundColor = m.ctx.Theme.Background
+	v.ForegroundColor = m.ctx.Theme.PrimaryText
 
 	s := strings.Builder{}
 	if m.ctx.View != config.RepoView {
@@ -1710,17 +1714,15 @@ func (m *Model) renderRunningTask() string {
 			lipgloss.Top,
 			m.taskSpinner.View(),
 			lipgloss.NewStyle().
-				Background(m.ctx.Theme.SelectedBackground).Render(task.StartText),
+				Foreground(m.ctx.Theme.FaintText).Render(" "+task.StartText),
 		)
 	case context.TaskError:
 		currTaskStatus = lipgloss.NewStyle().
 			Foreground(m.ctx.Theme.ErrorText).
-			Background(m.ctx.Theme.SelectedBackground).
 			Render(fmt.Sprintf("%s %s", constants.FailureIcon, task.Error.Error()))
 	case context.TaskFinished:
 		currTaskStatus = lipgloss.NewStyle().
 			Foreground(m.ctx.Theme.SuccessText).
-			Background(m.ctx.Theme.SelectedBackground).
 			Render(fmt.Sprintf("%s %s", constants.SuccessIcon, task.FinishedText))
 	}
 
@@ -1735,14 +1737,12 @@ func (m *Model) renderRunningTask() string {
 	if numProcessing > 1 {
 		stats = lipgloss.NewStyle().
 			Foreground(m.ctx.Theme.FaintText).
-			Background(m.ctx.Theme.SelectedBackground).
 			Render(fmt.Sprintf("[ %d] ", numProcessing))
 	}
 
 	return lipgloss.NewStyle().
 		Padding(0, 1).
 		Height(1).
-		Background(m.ctx.Theme.SelectedBackground).
 		Render(strings.TrimSpace(lipgloss.JoinHorizontal(lipgloss.Top, stats, currTaskStatus)))
 }
 

@@ -10,6 +10,18 @@ import (
 )
 
 type Theme struct {
+	// Accent is the color used to highlight what is focused or selected.
+	Accent compat.AdaptiveColor
+	// Secondary and Tertiary are used for states, e.g. open and merged PRs.
+	Secondary compat.AdaptiveColor
+	Tertiary  compat.AdaptiveColor
+	// Background is the color of the whole screen.
+	Background compat.AdaptiveColor
+	// PanelBackground is the color of raised areas such as the preview pane.
+	PanelBackground compat.AdaptiveColor
+	// ElementBackground is the color of blocks such as inputs and comments.
+	ElementBackground compat.AdaptiveColor
+
 	SelectedBackground      compat.AdaptiveColor // config.Theme.Colors.Background.Selected
 	PrimaryBorder           compat.AdaptiveColor // config.Theme.Colors.Border.Primary
 	FaintBorder             compat.AdaptiveColor // config.Theme.Colors.Border.Faint
@@ -36,79 +48,40 @@ type Theme struct {
 	UnknownRoleIcon         string               // config.Theme.Icons.UnknownRole
 }
 
+// The default colors are those of opencode's Catppuccin theme: Mocha on dark
+// terminals and Latte on light ones. The comments name the color of the
+// Catppuccin palette and, where there is one, the role it has in opencode.
+func adaptive(light, dark string) compat.AdaptiveColor {
+	return compat.AdaptiveColor{Light: lipgloss.Color(light), Dark: lipgloss.Color(dark)}
+}
+
 var DefaultTheme = &Theme{
-	PrimaryBorder: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(8),
-		Dark:  lipgloss.ANSIColor(8),
-	},
-	SecondaryBorder: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(8),
-		Dark:  lipgloss.ANSIColor(7),
-	},
-	SelectedBackground: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(7),
-		Dark:  lipgloss.ANSIColor(236),
-	},
-	FaintBorder: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(254),
-		Dark:  lipgloss.ANSIColor(234),
-	},
-	PrimaryText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(0),
-		Dark:  lipgloss.ANSIColor(15),
-	},
-	SecondaryText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(244),
-		Dark:  lipgloss.ANSIColor(251),
-	},
-	FaintText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(7),
-		Dark:  lipgloss.ANSIColor(245),
-	},
-	InvertedText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(15),
-		Dark:  lipgloss.ANSIColor(236),
-	},
-	SuccessText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(10),
-		Dark:  lipgloss.ANSIColor(10),
-	},
-	WarningText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(11),
-		Dark:  lipgloss.ANSIColor(11),
-	},
-	ErrorText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(1),
-		Dark:  lipgloss.ANSIColor(9),
-	},
-	ActorText: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(244),
-		Dark:  lipgloss.ANSIColor(251),
-	}, // Same as SecondaryText
-	NewContributorIconColor: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(77),
-		Dark:  lipgloss.ANSIColor(77),
-	},
-	ContributorIconColor: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(75),
-		Dark:  lipgloss.ANSIColor(75),
-	},
-	CollaboratorIconColor: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(178),
-		Dark:  lipgloss.ANSIColor(178),
-	},
-	MemberIconColor: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(178),
-		Dark:  lipgloss.ANSIColor(178),
-	},
-	OwnerIconColor: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(178),
-		Dark:  lipgloss.ANSIColor(178),
-	},
-	UnknownRoleIconColor: compat.AdaptiveColor{
-		Light: lipgloss.ANSIColor(178),
-		Dark:  lipgloss.ANSIColor(178),
-	},
+	Accent:             adaptive("#1e66f5", "#89b4fa"), // blue (primary)
+	Secondary:          adaptive("#8839ef", "#cba6f7"), // mauve (secondary)
+	Tertiary:           adaptive("#ea76cb", "#f5c2e7"), // pink (accent)
+	Background:         adaptive("#eff1f5", "#1e1e2e"), // base (background)
+	PanelBackground:    adaptive("#e6e9ef", "#181825"), // mantle (backgroundPanel)
+	ElementBackground:  adaptive("#dce0e8", "#11111b"), // crust (backgroundElement)
+	SelectedBackground: adaptive("#ccd0da", "#313244"), // surface0
+	PrimaryBorder:      adaptive("#bcc0cc", "#45475a"), // surface1 (borderActive)
+	SecondaryBorder:    adaptive("#acb0be", "#585b70"), // surface2 (borderSubtle)
+	FaintBorder:        adaptive("#ccd0da", "#313244"), // surface0 (border)
+	PrimaryText:        adaptive("#4c4f69", "#cdd6f4"), // text
+	SecondaryText:      adaptive("#5c5f77", "#bac2de"), // subtext1
+	FaintText:          adaptive("#7c7f93", "#9399b2"), // overlay2 (textMuted)
+	InvertedText:       adaptive("#eff1f5", "#11111b"), // base / crust
+	SuccessText:        adaptive("#40a02b", "#a6e3a1"), // green (success)
+	WarningText:        adaptive("#df8e1d", "#f9e2af"), // yellow (warning)
+	ErrorText:          adaptive("#d20f39", "#f38ba8"), // red (error)
+	ActorText:          adaptive("#5c5f77", "#bac2de"), // Same as SecondaryText
+
+	NewContributorIconColor: adaptive("#40a02b", "#a6e3a1"), // green
+	ContributorIconColor:    adaptive("#209fb5", "#74c7ec"), // sapphire
+	CollaboratorIconColor:   adaptive("#fe640b", "#fab387"), // peach
+	MemberIconColor:         adaptive("#fe640b", "#fab387"),
+	OwnerIconColor:          adaptive("#fe640b", "#fab387"),
+	UnknownRoleIconColor:    adaptive("#fe640b", "#fab387"),
+
 	NewContributorIcon: constants.NewContributorIcon,
 	ContributorIcon:    constants.ContributorIcon,
 	CollaboratorIcon:   constants.CollaboratorIcon,

@@ -2,12 +2,14 @@ package issueview
 
 import (
 	"sort"
+	"strings"
 	"time"
 
 	"charm.land/glamour/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/dlvhdr/gh-dash/v4/internal/data"
+	"github.com/dlvhdr/gh-dash/v4/internal/tui/common"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/markdown"
 	"github.com/dlvhdr/gh-dash/v4/internal/utils"
 )
@@ -38,9 +40,9 @@ func (m *Model) renderActivity() string {
 	})
 
 	body := ""
-	bodyStyle := lipgloss.NewStyle().PaddingLeft(2)
+	bodyStyle := lipgloss.NewStyle()
 	if len(activity) == 0 {
-		body = renderEmptyState()
+		body = lipgloss.NewStyle().PaddingLeft(2).Render(renderEmptyState())
 	} else {
 		var renderedActivities []string
 		for _, activity := range activity {
@@ -70,23 +72,22 @@ func (m *Model) renderComment(
 	width := m.getIndentedContentWidth() - 2
 	header := lipgloss.NewStyle().
 		Width(width).
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(m.ctx.Theme.FaintBorder).Render(
-		lipgloss.JoinHorizontal(
-			lipgloss.Top,
-			m.ctx.Styles.Common.MainTextStyle.Render(comment.Author.Login),
-			" ",
-			lipgloss.NewStyle().
-				Foreground(m.ctx.Theme.FaintText).
-				Render(utils.TimeElapsed(comment.UpdatedAt)),
-		))
+		Render(
+			lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				m.ctx.Styles.Common.MainTextStyle.Render(comment.Author.Login),
+				" ",
+				lipgloss.NewStyle().
+					Foreground(m.ctx.Theme.FaintText).
+					Render(utils.TimeElapsed(comment.UpdatedAt)),
+			))
 
 	body := lineCleanupRegex.ReplaceAllString(comment.Body, "")
 	body, err := markdownRenderer.Render(body)
 
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		header,
-		body,
-	), err
+	// the bar and its padding take up the two columns the width leaves free
+	return common.RenderQuote(
+		lipgloss.JoinVertical(lipgloss.Left, header, "", strings.Trim(body, "\n")),
+		m.ctx.Theme.SecondaryBorder,
+	) + "\n", err
 }

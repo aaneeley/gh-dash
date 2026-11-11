@@ -6,6 +6,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/dlvhdr/gh-dash/v4/internal/data"
+	"github.com/dlvhdr/gh-dash/v4/internal/tui/common"
 	"github.com/dlvhdr/gh-dash/v4/internal/utils"
 )
 
@@ -21,13 +22,8 @@ func (m *Model) renderChangesOverview() string {
 		Width(w).
 		Padding(1)
 
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder(), true).
-		BorderForeground(m.ctx.Theme.FaintBorder).
-		Width(m.getIndentedContentWidth())
-
 	time := lipgloss.NewStyle().Render(utils.TimeElapsed(m.pr.Data.Primary.UpdatedAt))
-	return box.Render(
+	return common.RenderBlock(m.ctx.Theme,
 		lipgloss.JoinVertical(lipgloss.Left,
 			changes.Render(
 				lipgloss.JoinHorizontal(lipgloss.Top,
@@ -48,6 +44,8 @@ func (m *Model) renderChangesOverview() string {
 				),
 			),
 		),
+		m.ctx.Theme.SecondaryBorder,
+		m.getIndentedContentWidth(),
 	)
 }
 

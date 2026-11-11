@@ -453,15 +453,18 @@ func (m *BaseModel) GetMainContent() string {
 
 func (m *BaseModel) View() string {
 	search := m.SearchBar.View(m.Ctx)
-	return m.Ctx.Styles.Section.ContainerStyle.
-		Width(m.Ctx.MainContentWidth).
-		Render(
+	// The width isn't set on the style: that wraps the content, which strips
+	// the background color of whitespace such as the search bar's padding.
+	return common.FitWidth(
+		m.Ctx.Styles.Section.ContainerStyle.Render(
 			lipgloss.JoinVertical(
 				lipgloss.Left,
 				search,
 				m.GetMainContent(),
 			),
-		)
+		),
+		m.Ctx.MainContentWidth,
+	)
 }
 
 func (m *BaseModel) ResetRows() {

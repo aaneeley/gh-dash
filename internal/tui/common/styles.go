@@ -1,8 +1,9 @@
 package common
 
 import (
+	"image/color"
+
 	"charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/compat"
 
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/constants"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/theme"
@@ -49,7 +50,7 @@ func BuildStyles(theme theme.Theme) CommonStyles {
 	s.FaintTextStyle = lipgloss.NewStyle().
 		Foreground(theme.FaintText)
 	s.FooterStyle = lipgloss.NewStyle().
-		Background(theme.SelectedBackground).
+		Foreground(theme.FaintText).
 		Height(FooterHeight)
 
 	s.ErrorStyle = lipgloss.NewStyle().Foreground(theme.ErrorText)
@@ -77,10 +78,7 @@ func BuildStyles(theme theme.Theme) CommonStyles {
 		Foreground(theme.PrimaryText).
 		Render(constants.DraftIcon)
 	s.MergedGlyph = lipgloss.NewStyle().
-		Foreground(compat.AdaptiveColor{
-			Light: lipgloss.Color("#A371F7"),
-			Dark:  lipgloss.Color("#A371F7"),
-		}).
+		Foreground(theme.Secondary).
 		Render(constants.MergedIcon)
 	s.ActionRequiredGlyph = lipgloss.NewStyle().
 		Foreground(theme.WarningText).
@@ -88,24 +86,48 @@ func BuildStyles(theme theme.Theme) CommonStyles {
 	return s
 }
 
+// PreviewHeaderPadding is the horizontal padding of the header of preview
+// panes, it lines the header up with the content below it.
+const PreviewHeaderPadding = 2
+
 // RenderPreviewHeader renders the repo/number line at the top of preview panes
 // (e.g., "owner/repo · #123" or "#123 · owner/repo")
 func RenderPreviewHeader(theme theme.Theme, width int, text string) string {
 	return lipgloss.NewStyle().
-		PaddingLeft(1).
+		Padding(1, PreviewHeaderPadding, 0).
 		Width(width).
-		Background(theme.SelectedBackground).
-		Foreground(theme.SecondaryText).
+		Foreground(theme.FaintText).
 		Render(text)
 }
 
-// RenderPreviewTitle renders the title block with background highlight
+// RenderPreviewTitle renders the title of preview panes
 func RenderPreviewTitle(theme theme.Theme, styles CommonStyles, width int, title string) string {
-	return lipgloss.NewStyle().Height(3).Width(width).Background(
-		theme.SelectedBackground).PaddingLeft(1).Render(
-		lipgloss.PlaceVertical(3, lipgloss.Center, styles.MainTextStyle.
-			Background(theme.SelectedBackground).
-			Render(title),
-		),
-	)
+	return styles.MainTextStyle.
+		Padding(0, PreviewHeaderPadding).
+		Width(width).
+		Render(title)
+}
+
+// BarBorder is the thick vertical bar that marks blocks such as inputs,
+// comments and the selected row.
+var BarBorder = lipgloss.Border{Left: "┃"}
+
+// RenderBlock renders content as a block: it is set off from its surroundings
+// by a darker background and a bar in the given color on its left. The width
+// includes the bar.
+func RenderBlock(theme theme.Theme, content string, bar color.Color, width int) string {
+	return lipgloss.NewStyle().
+		Border(BarBorder, false, false, false, true).
+		BorderForeground(bar).
+		Render(PaintBackground(content, theme.ElementBackground, max(0, width-1)))
+}
+
+// RenderQuote marks content with a bar on its left, without changing its
+// background.
+func RenderQuote(content string, bar color.Color) string {
+	return lipgloss.NewStyle().
+		Border(BarBorder, false, false, false, true).
+		BorderForeground(bar).
+		PaddingLeft(1).
+		Render(content)
 }

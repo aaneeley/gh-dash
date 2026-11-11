@@ -7,7 +7,6 @@ import (
 
 	bbHelp "charm.land/bubbles/v2/help"
 	"charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/compat"
 
 	"github.com/dlvhdr/gh-dash/v4/internal/config"
 	"github.com/dlvhdr/gh-dash/v4/internal/git"
@@ -16,7 +15,7 @@ import (
 	"github.com/dlvhdr/gh-dash/v4/internal/utils"
 )
 
-const viewSeparator = " │ "
+const viewSeparator = "  "
 
 type Model struct {
 	ctx             *context.ProgramContext
@@ -48,11 +47,9 @@ func (m Model) View() string {
 		footer = lipgloss.NewStyle().
 			Render("Really quit? (Press y/enter to confirm, any other key to cancel)")
 	} else {
-		helpIndicator := lipgloss.NewStyle().
-			Background(m.ctx.Theme.FaintText).
-			Foreground(m.ctx.Theme.SelectedBackground).
-			Padding(0, 1).
-			Render("? help")
+		helpIndicator := lipgloss.NewStyle().Padding(0, 1).Render(
+			lipgloss.NewStyle().Foreground(m.ctx.Theme.PrimaryText).Render("?") +
+				m.ctx.Styles.Common.FaintTextStyle.Render(" help"))
 		viewSwitcher := m.renderViewSwitcher(m.ctx)
 		leftSection := ""
 		if m.leftSection != nil {
@@ -63,7 +60,6 @@ func (m Model) View() string {
 			rightSection = *m.rightSection
 		}
 		spacing := lipgloss.NewStyle().
-			Background(m.ctx.Theme.SelectedBackground).
 			Render(
 				strings.Repeat(
 					" ",
@@ -130,23 +126,12 @@ func (m *Model) renderViewButton(view config.ViewType) string {
 	}
 
 	if isActive {
-		// Active: colored icon + prominent background
-		// Use gold for notifications bell, green for others
-		iconColor := m.ctx.Theme.SuccessText
-		if view == config.NotificationsView {
-			iconColor = compat.AdaptiveColor{
-				Light: lipgloss.Color("#B8860B"),
-				Dark:  lipgloss.Color("#FFD700"),
-			} // Gold
-		}
-		activeStyle := lipgloss.NewStyle().
-			Foreground(iconColor).
-			Background(m.ctx.Styles.ViewSwitcher.ActiveView.GetBackground()).
-			Bold(true)
+		// Active: accent colored icon + bright label
+		icon = lipgloss.NewStyle().Foreground(m.ctx.Theme.Accent).Render(icon)
 		if label != "" {
-			return activeStyle.Render(icon) + activeStyle.Render(label)
+			return icon + m.ctx.Styles.ViewSwitcher.ActiveView.Render(label)
 		}
-		return activeStyle.Render(icon)
+		return icon
 	}
 
 	// Inactive: faint styling
@@ -176,12 +161,11 @@ func (m *Model) renderViewSwitcher(ctx *context.ProgramContext) string {
 		m.renderViewButton(config.PRsView),
 		ctx.Styles.ViewSwitcher.ViewsSeparator.Render(viewSeparator),
 		m.renderViewButton(config.IssuesView),
-		lipgloss.NewStyle().Background(ctx.Styles.Common.FooterStyle.GetBackground()).Foreground(
-			ctx.Styles.ViewSwitcher.ViewsSeparator.GetBackground()).Render(" "),
+		"   ",
 		repo,
-		ctx.Styles.Common.FooterStyle.Foreground(m.ctx.Theme.FaintText).Render(" • "),
+		ctx.Styles.Common.FooterStyle.Render(" · "),
 		user,
-		ctx.Styles.Common.FooterStyle.Foreground(m.ctx.Theme.FaintBorder).Render(" │"),
+		"  ",
 	)
 
 	return ctx.Styles.ViewSwitcher.Root.Render(view)

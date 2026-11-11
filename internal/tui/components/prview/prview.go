@@ -167,6 +167,7 @@ func (m *Model) viewHeader() string {
 	header.WriteString(m.renderAuthor())
 	header.WriteString("\n\n")
 	header.WriteString(lipgloss.NewStyle().Width(m.width).
+		PaddingLeft(1).
 		Border(lipgloss.NormalBorder(), false, false, true, false).
 		BorderForeground(m.ctx.Theme.FaintBorder).
 		Render(m.carousel.View()),
@@ -193,13 +194,13 @@ func (m *Model) viewOverviewTab() string {
 	body.WriteString(m.renderSummary())
 	body.WriteString("\n\n")
 	body.WriteString(
-		m.ctx.Styles.Common.MainTextStyle.MarginBottom(1).Underline(true).Render(" Changes"),
+		m.ctx.Styles.Common.MainTextStyle.MarginBottom(1).Render(" Changes"),
 	)
 	body.WriteString("\n")
 	body.WriteString(m.renderChangesOverview())
 	body.WriteString("\n\n")
 	body.WriteString(
-		m.ctx.Styles.Common.MainTextStyle.MarginBottom(1).Underline(true).Render(" Checks"),
+		m.ctx.Styles.Common.MainTextStyle.MarginBottom(1).Render(" Checks"),
 	)
 	body.WriteString("\n")
 	body.WriteString(m.renderChecksOverview())
@@ -253,7 +254,7 @@ func (m *Model) renderTitle() string {
 
 func (m *Model) renderBranches() string {
 	return lipgloss.JoinHorizontal(lipgloss.Left,
-		" ",
+		strings.Repeat(" ", common.PreviewHeaderPadding),
 		m.renderStatusPill(),
 		" ",
 		lipgloss.NewStyle().
@@ -292,7 +293,7 @@ func (m *Model) renderLabels() string {
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		m.ctx.Styles.Common.MainTextStyle.Underline(true).Bold(true).Render(
+		m.ctx.Styles.Common.MainTextStyle.Bold(true).Render(
 			fmt.Sprintf("%s Labels", constants.LabelsIcon)),
 		"",
 		common.RenderLabels(labels, common.LabelOpts{
@@ -310,7 +311,7 @@ func (m *Model) renderRequestedReviewers() string {
 	if !m.pr.Data.IsEnriched {
 		return lipgloss.JoinVertical(
 			lipgloss.Left,
-			m.ctx.Styles.Common.MainTextStyle.Underline(true).Bold(true).Render(
+			m.ctx.Styles.Common.MainTextStyle.Bold(true).Render(
 				fmt.Sprintf("%s Reviewers", constants.CodeReviewIcon)),
 			"",
 			lipgloss.JoinHorizontal(
@@ -466,7 +467,7 @@ func (m *Model) renderRequestedReviewers() string {
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		m.ctx.Styles.Common.MainTextStyle.Underline(true).Bold(true).Render(
+		m.ctx.Styles.Common.MainTextStyle.Bold(true).Render(
 			fmt.Sprintf("%s Reviewers", constants.CodeReviewIcon)),
 		"",
 		strings.Join(rows, "\n"),
@@ -480,7 +481,8 @@ func (m *Model) renderAuthor() string {
 	}
 	time := lipgloss.NewStyle().Render(utils.TimeElapsed(m.pr.Data.Primary.CreatedAt))
 	return lipgloss.JoinHorizontal(lipgloss.Top,
-		" by ",
+		strings.Repeat(" ", common.PreviewHeaderPadding),
+		m.ctx.Styles.Common.FaintTextStyle.Render("by "),
 		lipgloss.NewStyle().Foreground(m.ctx.Theme.PrimaryText).Render(
 			lipgloss.NewStyle().Bold(true).Render("@"+m.pr.Data.Primary.Author.Login)),
 		lipgloss.NewStyle().Foreground(m.ctx.Theme.FaintText).Render(
@@ -499,7 +501,7 @@ func (m *Model) renderSummary() string {
 	body := htmlCommentRegex.ReplaceAllString(m.pr.Data.Enriched.Body, "")
 	body = lineCleanupRegex.ReplaceAllString(body, "")
 
-	desc := m.ctx.Styles.Common.MainTextStyle.Bold(true).Underline(true).Render(" Summary")
+	desc := m.ctx.Styles.Common.MainTextStyle.Bold(true).Render(" Summary")
 	title := lipgloss.JoinVertical(
 		lipgloss.Left,
 		desc,
@@ -602,8 +604,10 @@ func (m *Model) UpdateProgramContext(ctx *context.ProgramContext) {
 	m.editor.UpdateProgramContext(ctx)
 	m.carousel.SetStyles(
 		carousel.Styles{
-			Item:     lipgloss.NewStyle().Padding(0, 1).Foreground(m.ctx.Theme.FaintText),
-			Selected: lipgloss.NewStyle().Padding(0, 1).Bold(true),
+			Item: lipgloss.NewStyle().Padding(0, 1).Foreground(m.ctx.Theme.FaintText),
+			Selected: lipgloss.NewStyle().Padding(0, 1).Bold(true).
+				Foreground(m.ctx.Theme.PrimaryText).
+				Background(m.ctx.Theme.SelectedBackground),
 		},
 	)
 

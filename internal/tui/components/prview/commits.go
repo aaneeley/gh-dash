@@ -26,7 +26,7 @@ func (m *Model) renderCommits() string {
 	}
 
 	commits := m.pr.Data.Enriched.AllCommits.Nodes
-	heading := m.ctx.Styles.Common.MainTextStyle.MarginBottom(1).Underline(true).Render(
+	heading := m.ctx.Styles.Common.MainTextStyle.MarginBottom(1).Render(
 		fmt.Sprintf("%s  %d commits", constants.CommitIcon, len(commits)))
 
 	rendered := make([]string, len(commits))

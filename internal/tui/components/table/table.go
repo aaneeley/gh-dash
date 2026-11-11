@@ -40,6 +40,10 @@ type Column struct {
 
 type Row []string
 
+// gutterWidth is the width of the column left of the rows that holds the bar
+// marking the selected row.
+const gutterWidth = 1
+
 func NewModel(
 	ctx context.ProgramContext,
 	dimensions constants.Dimensions,
@@ -263,7 +267,7 @@ func (m *Model) renderHeaderColumns() []string {
 		return renderedColumns
 	}
 
-	leftoverWidth := m.dimensions.Width - takenWidth
+	leftoverWidth := m.dimensions.Width - takenWidth - gutterWidth
 	growCellWidth := leftoverWidth / numGrowingColumns
 	for i, column := range shownColumns {
 		if column.Grow == nil || !*column.Grow {
@@ -282,7 +286,7 @@ func (m *Model) renderHeaderColumns() []string {
 func (m *Model) renderHeader() string {
 	headerColumns := m.renderHeaderColumns()
 	header := ansi.Truncate(
-		lipgloss.JoinHorizontal(lipgloss.Top, headerColumns...),
+		strings.Repeat(" ", gutterWidth)+lipgloss.JoinHorizontal(lipgloss.Top, headerColumns...),
 		m.dimensions.Width,
 		constants.Ellipsis,
 	)
@@ -315,12 +319,16 @@ func (m *Model) renderBody() string {
 }
 
 func (m *Model) renderRow(rowId int, headerColumns []string) string {
-	var style lipgloss.Style
+	var style, gutterStyle lipgloss.Style
+	gutter := " "
 
 	if m.rowsViewport.GetCurrItem() == rowId {
 		style = m.ctx.Styles.Table.SelectedCellStyle
+		gutterStyle = m.ctx.Styles.Table.SelectedGutter
+		gutter = "┃"
 	} else {
 		style = m.ctx.Styles.Table.CellStyle
+		gutterStyle = m.ctx.Styles.Table.Gutter
 	}
 
 	renderedColumns := make([]string, 0, len(m.Columns))
@@ -378,10 +386,16 @@ func (m *Model) renderRow(rowId int, headerColumns []string) string {
 		headerColId++
 	}
 
+	row := lipgloss.JoinHorizontal(lipgloss.Top, renderedColumns...)
+	gutterLines := make([]string, lipgloss.Height(row))
+	for i := range gutterLines {
+		gutterLines[i] = gutterStyle.Render(gutter)
+	}
+
 	return m.ctx.Styles.Table.RowStyle.
 		BorderBottom(m.ctx.Config.Theme.Ui.Table.ShowSeparator).
 		MaxWidth(m.dimensions.Width).
-		Render(lipgloss.JoinHorizontal(lipgloss.Top, renderedColumns...))
+		Render(lipgloss.JoinHorizontal(lipgloss.Top, strings.Join(gutterLines, "\n"), row))
 }
 
 func (m *Model) UpdateProgramContext(ctx *context.ProgramContext) {

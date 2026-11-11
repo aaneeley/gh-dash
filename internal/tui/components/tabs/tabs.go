@@ -2,6 +2,7 @@ package tabs
 
 import (
 	"fmt"
+	"strings"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
@@ -15,6 +16,9 @@ import (
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/keys"
 	"github.com/dlvhdr/gh-dash/v4/internal/utils"
 )
+
+// tabsMargin lines the tabs up with the content below them.
+const tabsMargin = 1
 
 type SectionTab struct {
 	section section.Section
@@ -33,7 +37,6 @@ func NewModel(ctx *context.ProgramContext) Model {
 	c := carousel.NewModel(
 		carousel.WithHeight(1),
 		carousel.WithOverflowIndicators("←", "→"),
-		carousel.WithSeparators(),
 	)
 	m := Model{
 		carousel: c,
@@ -73,7 +76,8 @@ func (m Model) View() string {
 	return m.ctx.Styles.Tabs.TabsRow.
 		Width(m.ctx.ScreenWidth).
 		Height(common.HeaderHeight).
-		Render(lipgloss.JoinHorizontal(lipgloss.Bottom, crsl, m.viewNewSectionButton(), logo))
+		Render(lipgloss.JoinHorizontal(lipgloss.Bottom,
+			strings.Repeat(" ", tabsMargin), crsl, m.viewNewSectionButton(), logo))
 }
 
 type latestVersionMsg struct {
@@ -84,14 +88,12 @@ type latestVersionMsg struct {
 func (m Model) viewNewSectionButton() string {
 	return lipgloss.NewStyle().
 		Padding(0, 1).
-		Border(lipgloss.NormalBorder(), false, true, false, false).
-		BorderForeground(m.ctx.Styles.Tabs.TabSeparator.GetForeground()).
 		Render(
 			lipgloss.JoinHorizontal(lipgloss.Top,
 				lipgloss.NewStyle().
-					Foreground(m.ctx.Styles.Colors.SuccessText).
-					Render("󱅃 "),
-				keys.Keys.NewSection.Help().Key,
+					Foreground(m.ctx.Theme.SecondaryText).
+					Render(keys.Keys.NewSection.Help().Key),
+				m.ctx.Styles.Common.FaintTextStyle.Render(" new section"),
 			))
 }
 
@@ -99,7 +101,7 @@ func (m Model) carouselWidth() int {
 	logo := m.viewLogo()
 	newSectionButton := m.viewNewSectionButton()
 	return m.ctx.ScreenWidth - lipgloss.Width(logo) -
-		lipgloss.Width(newSectionButton)
+		lipgloss.Width(newSectionButton) - tabsMargin
 }
 
 func (m *Model) fetchHasNewVersion() tea.Cmd {
@@ -152,7 +154,7 @@ func (m *Model) UpdateTabTitles() {
 		if tab.section.GetIsLoading() {
 			title = fmt.Sprintf("%s %s", title, m.sectionTabs[i].spinner.View())
 		} else if m.ctx.Config.Theme.Ui.SectionsShowCount {
-			title = fmt.Sprintf("%s (%s)", title,
+			title = fmt.Sprintf("%s %s", title,
 				utils.ShortNumber(tab.section.GetTotalCount()))
 		}
 
@@ -165,7 +167,7 @@ func (m *Model) UpdateTabTitles() {
 }
 
 func (m *Model) viewLogo() string {
-	version := lipgloss.NewStyle().Foreground(m.ctx.Theme.SecondaryText).Render(m.ctx.Version)
+	version := m.ctx.Styles.Common.FaintTextStyle.Render(m.ctx.Version)
 	if m.latestVersion != "" && m.ctx.Version != "dev" && m.ctx.Version != m.latestVersion {
 		version = lipgloss.JoinHorizontal(
 			lipgloss.Top,
@@ -180,12 +182,8 @@ func (m *Model) viewLogo() string {
 		Margin(0, 1, 0, 2).
 		Render(lipgloss.JoinHorizontal(
 			lipgloss.Bottom,
-			lipgloss.NewStyle().
-				Background(lipgloss.Darken(context.LogoColor, 0.7)).
-				Padding(0, 1).
-				Foreground(context.LogoColor).
-				Bold(true).
-				Render("DASH"),
+			m.ctx.Styles.Common.FaintTextStyle.Render("gh"),
+			m.ctx.Styles.Common.MainTextStyle.Render("dash"),
 			" ",
 			version,
 		))

@@ -68,8 +68,6 @@ type Styles struct {
 		BorderWidth    int
 		PagerHeight    int
 		ContentPadding int
-		Root           lipgloss.Style
-		BottomRoot     lipgloss.Style
 		PagerStyle     lipgloss.Style
 		InputBox       lipgloss.Style
 	}
@@ -80,6 +78,8 @@ type Styles struct {
 		CellStyle                lipgloss.Style
 		SelectedCellStyle        lipgloss.Style
 		TitleCellStyle           lipgloss.Style
+		Gutter                   lipgloss.Style
+		SelectedGutter           lipgloss.Style
 		SingleRuneTitleCellStyle lipgloss.Style
 		HeaderStyle              lipgloss.Style
 		RowStyle                 lipgloss.Style
@@ -137,37 +137,27 @@ var DefaultStyles = Styles{
 	},
 }
 
-var LogoColor = lipgloss.Color("#00F9FB")
+// BarBorder is the thick vertical bar that marks blocks such as inputs,
+// comments and the selected row.
+var BarBorder = common.BarBorder
+
+var LogoColor = lipgloss.Color("#89b4fa")
 
 func InitStyles(theme theme.Theme) Styles {
 	var s Styles
 
-	s.Colors.OpenIssue = compat.AdaptiveColor{
-		Light: lipgloss.Color("#42A0FA"),
-		Dark:  lipgloss.Color("#42A0FA"),
-	}
-	s.Colors.ClosedIssue = compat.AdaptiveColor{
-		Light: lipgloss.Color("#C38080"),
-		Dark:  lipgloss.Color("#C38080"),
-	}
-	s.Colors.SuccessText = compat.AdaptiveColor{
-		Light: lipgloss.Color("#3DF294"),
-		Dark:  lipgloss.Color("#3DF294"),
-	}
-	s.Colors.OpenPR = s.Colors.OpenIssue
-	s.Colors.ClosedPR = compat.AdaptiveColor{
-		Light: lipgloss.Color("#656C76"),
-		Dark:  lipgloss.Color("#656C76"),
-	}
-	s.Colors.MergedPR = compat.AdaptiveColor{
-		Light: lipgloss.Color("#A371F7"),
-		Dark:  lipgloss.Color("#A371F7"),
-	}
+	s.Colors.OpenIssue = theme.SuccessText
+	s.Colors.ClosedIssue = theme.ErrorText
+	s.Colors.SuccessText = theme.SuccessText
+	s.Colors.OpenPR = theme.SuccessText
+	s.Colors.ClosedPR = theme.ErrorText
+	s.Colors.MergedPR = theme.Secondary
 
 	s.Common = common.BuildStyles(theme)
 
+	// the search input is a block with a bar on its left, like a prompt
 	s.Search.Root = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder(), true).
+		Border(BarBorder, false, false, false, true).
 		BorderForeground(theme.PrimaryBorder)
 
 	s.PrView.PillStyle = s.Common.MainTextStyle.
@@ -179,7 +169,7 @@ func InitStyles(theme theme.Theme) Styles {
 	s.Help.BubbleStyles = bbHelp.Styles{
 		ShortDesc:      s.Help.Text.Foreground(theme.FaintText),
 		FullDesc:       s.Help.Text.Foreground(theme.FaintText),
-		ShortSeparator: s.Help.Text.Foreground(theme.SecondaryBorder),
+		ShortSeparator: s.Help.Text.Foreground(theme.FaintBorder),
 		FullSeparator:  s.Help.Text,
 		FullKey:        s.Help.KeyText,
 		ShortKey:       s.Help.KeyText,
@@ -193,7 +183,6 @@ func InitStyles(theme theme.Theme) Styles {
 		Height(s.Pager.Height).
 		MaxHeight(s.Pager.Height).
 		PaddingTop(1).
-		Bold(true).
 		Foreground(theme.FaintText)
 
 	s.Section.ContainerPadding = 1
@@ -218,37 +207,21 @@ func InitStyles(theme theme.Theme) Styles {
 	s.Sidebar.PagerHeight = 1
 	s.Sidebar.BorderWidth = 1
 	s.Sidebar.ContentPadding = 2
-	s.Sidebar.Root = lipgloss.NewStyle().
-		BorderLeft(true).
-		BorderStyle(lipgloss.Border{
-			Top:         "",
-			Bottom:      "",
-			Left:        "│",
-			Right:       "",
-			TopLeft:     "",
-			TopRight:    "",
-			BottomRight: "",
-			BottomLeft:  "",
-		}).
-		BorderForeground(theme.PrimaryBorder)
-	s.Sidebar.BottomRoot = lipgloss.NewStyle().
-		BorderTop(true).
-		BorderStyle(lipgloss.ThickBorder()).
-		BorderForeground(theme.PrimaryBorder)
+	// The sidebar is a raised panel instead of a bordered box. It paints the
+	// panel itself, see sidebar.View. BorderWidth is the gap around it.
 	s.Sidebar.PagerStyle = lipgloss.NewStyle().
 		Height(s.Sidebar.PagerHeight).
-		Bold(true).
+		PaddingLeft(s.Sidebar.ContentPadding).
 		Foreground(theme.FaintText)
 
 	s.Sidebar.InputBox = lipgloss.NewStyle().
 		MarginTop(1).
-		Border(lipgloss.NormalBorder()).
-		BorderTop(true).
-		BorderForeground(theme.PrimaryBorder)
+		PaddingLeft(1).
+		Border(BarBorder, false, false, false, true).
+		BorderForeground(theme.Accent)
 
 	s.ListViewPort.PagerStyle = lipgloss.NewStyle().
 		Padding(0, 1).
-		Background(theme.SelectedBackground).
 		Foreground(theme.FaintText)
 
 	s.Table.CellStyle = lipgloss.NewStyle().PaddingLeft(1).
@@ -257,56 +230,51 @@ func InitStyles(theme theme.Theme) Styles {
 	s.Table.SelectedCellStyle = s.Table.CellStyle.
 		Background(theme.SelectedBackground)
 	s.Table.TitleCellStyle = s.Table.CellStyle.
-		Bold(true).
-		Foreground(theme.PrimaryText)
+		Foreground(theme.FaintText)
 	s.Table.SingleRuneTitleCellStyle = s.Table.TitleCellStyle.
 		Width(common.SingleRuneWidth)
 	s.Table.HeaderStyle = lipgloss.NewStyle()
+	// rows are separated by whitespace instead of rules
 	s.Table.RowStyle = lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(theme.FaintBorder)
+		BorderStyle(lipgloss.Border{Bottom: " "})
+	s.Table.Gutter = lipgloss.NewStyle()
+	s.Table.SelectedGutter = lipgloss.NewStyle().
+		Foreground(theme.Accent).
+		Background(theme.SelectedBackground)
 
 	s.Tabs.Tab = lipgloss.NewStyle().
-		Faint(true).
+		Foreground(theme.FaintText).
 		Padding(0, 2)
 	s.Tabs.ActiveTab = s.Tabs.Tab.
-		Faint(false).
 		Bold(true).
 		Background(theme.SelectedBackground).
 		Foreground(theme.PrimaryText)
-	s.Tabs.OverflowIndicator = s.Common.FaintTextStyle.Bold(true).Padding(0, 1)
+	s.Tabs.OverflowIndicator = s.Common.FaintTextStyle.Padding(0, 1)
 	s.Tabs.TabSeparator = lipgloss.NewStyle().
-		Foreground(theme.SecondaryBorder)
+		Foreground(theme.FaintBorder)
 	s.Tabs.TabsRow = lipgloss.NewStyle().
 		Height(common.TabsContentHeight).
 		BorderBottom(true).
-		BorderStyle(lipgloss.ThickBorder()).
-		BorderBottomForeground(theme.PrimaryBorder)
-	s.ViewSwitcher.Root = lipgloss.NewStyle().
-		Background(s.Common.FooterStyle.GetBackground()).
-		Foreground(theme.InvertedText).
-		Bold(true)
+		BorderStyle(lipgloss.Border{Bottom: " "})
+	s.ViewSwitcher.Root = lipgloss.NewStyle()
 
 	s.ViewSwitcher.ActiveView = lipgloss.NewStyle().
 		Foreground(theme.PrimaryText).
-		Bold(true).
-		Background(theme.FaintBorder)
+		Bold(true)
 	s.ViewSwitcher.ViewsSeparator = lipgloss.NewStyle().
-		Background(theme.FaintBorder).
-		Foreground(theme.PrimaryBorder)
+		Foreground(theme.FaintBorder)
 	s.ViewSwitcher.InactiveView = lipgloss.NewStyle().
-		Background(theme.FaintBorder).
 		Foreground(theme.FaintText)
 	s.Select.PopupStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(s.Colors.OpenIssue).
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(theme.PrimaryBorder).
 		Foreground(theme.PrimaryText)
 	s.Select.HelpStyle = lipgloss.NewStyle().
 		Padding(0, 1).
 		Border(lipgloss.NormalBorder(), true, false, false, false).
 		BorderTopForeground(theme.FaintBorder)
 	s.Select.Pointer = lipgloss.NewStyle().
-		Foreground(theme.SuccessText)
+		Foreground(theme.Accent)
 	s.Select.ItemStyle = lipgloss.NewStyle().
 		PaddingRight(1)
 	s.Select.SelectedStyle = s.Select.ItemStyle.

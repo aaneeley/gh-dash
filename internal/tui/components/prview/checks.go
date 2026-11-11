@@ -2,12 +2,14 @@ package prview
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 
 	"github.com/dlvhdr/gh-dash/v4/internal/data"
+	"github.com/dlvhdr/gh-dash/v4/internal/tui/common"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/keys"
 	ghchecks "github.com/dlvhdr/x/gh-checks"
 )
@@ -36,17 +38,13 @@ func (m *Model) renderChecksOverview() string {
 	checks, cStatus := m.viewChecksStatus()
 	merge, mStatus := m.viewMergeStatus()
 
-	borderColor := m.ctx.Theme.FaintBorder
+	var borderColor color.Color = m.ctx.Theme.SecondaryBorder
 	if rStatus == statusFailure || cStatus == statusFailure || mStatus == statusFailure {
 		borderColor = m.ctx.Theme.ErrorText
 	} else if rStatus == statusSuccess && cStatus == statusSuccess && mStatus == statusSuccess {
 		borderColor = m.ctx.Theme.SuccessText
 	}
 
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(borderColor).
-		Width(w)
 	parts := make([]string, 0)
 	if review != "" {
 		parts = append(parts, review)
@@ -58,7 +56,8 @@ func (m *Model) renderChecksOverview() string {
 		parts = append(parts, merge)
 	}
 
-	return box.Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
+	return common.RenderBlock(m.ctx.Theme,
+		lipgloss.JoinVertical(lipgloss.Left, parts...), borderColor, w)
 }
 
 func (m *Model) viewChecksStatus() (string, checkSectionStatus) {
@@ -169,16 +168,12 @@ func (m *Model) viewMergeStatus() (string, checkSectionStatus) {
 
 func (m *Model) viewMergedStatus() string {
 	w := m.getIndentedContentWidth()
-	box := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(m.ctx.Styles.Colors.MergedPR).
-		Width(w)
-	return box.Render(m.viewCheckCategory(
+	return common.RenderBlock(m.ctx.Theme, m.viewCheckCategory(
 		m.ctx.Styles.Common.MergedGlyph,
 		"Pull request successfully merged and closed",
 		"The branch has been merged",
 		true,
-	))
+	), m.ctx.Styles.Colors.MergedPR, w)
 }
 
 func (m *Model) viewClosedStatus() string {
