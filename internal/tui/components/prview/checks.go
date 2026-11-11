@@ -7,9 +7,11 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dlvhdr/gh-dash/v4/internal/data"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/common"
+	"github.com/dlvhdr/gh-dash/v4/internal/tui/constants"
 	"github.com/dlvhdr/gh-dash/v4/internal/tui/keys"
 	ghchecks "github.com/dlvhdr/x/gh-checks"
 )
@@ -128,6 +130,9 @@ func (m *Model) viewChecksStatus() (string, checkSectionStatus) {
 			strings.Join(statStrs, ", "),
 			checksBar,
 		)
+		if failed := m.viewFailedChecks(); failed != "" {
+			checksBottom = lipgloss.JoinVertical(lipgloss.Left, checksBottom, "", failed)
+		}
 		checks = m.viewCheckCategory(icon, title, checksBottom, false)
 	}
 	return checks, status
@@ -282,6 +287,66 @@ func (m *Model) viewCheckCategory(icon, title, subtitle string, isLast bool) str
 	return part.Render(category)
 }
 
+// isFailedCheckState handles both check-run conclusions and commit-status
+// states; ERROR is a failing commit status, not a check-run conclusion.
+func isFailedCheckState(state string) bool {
+	return state == string(ghchecks.CommitStateError) || ghchecks.IsConclusionAFailure(state)
+}
+
+// failedCheckNames returns the names of the checks of the last commit that
+// failed, named like GitHub does: "workflow / job" for check runs and the
+// context for commit statuses.
+func (m *Model) failedCheckNames() []string {
+	commits := m.pr.Data.Enriched.Commits.Nodes
+	if len(commits) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0)
+	for _, node := range commits[0].Commit.StatusCheckRollup.Contexts.Nodes {
+		switch node.Typename {
+		case "CheckRun":
+			checkRun := node.CheckRun
+			if ghchecks.IsStatusWaiting(string(checkRun.Status)) ||
+				!isFailedCheckState(string(checkRun.Conclusion)) {
+				continue
+			}
+			name := strings.TrimSpace(string(checkRun.Name))
+			workflow := strings.TrimSpace(string(checkRun.CheckSuite.WorkflowRun.Workflow.Name))
+			if workflow != "" && name != "" {
+				name = workflow + " / " + name
+			} else if name == "" {
+				name = workflow
+			}
+			names = append(names, name)
+		case "StatusContext":
+			if !isFailedCheckState(string(node.StatusContext.State)) {
+				continue
+			}
+			names = append(names, strings.TrimSpace(string(node.StatusContext.Context)))
+		}
+	}
+	return names
+}
+
+// viewFailedChecks lists the checks that failed, one per line.
+func (m *Model) viewFailedChecks() string {
+	names := m.failedCheckNames()
+	if len(names) == 0 {
+		return ""
+	}
+
+	// what is left of the block after its bar, padding and indentation
+	width := max(0, m.getIndentedContentWidth()-8)
+	name := lipgloss.NewStyle().Foreground(m.ctx.Theme.SecondaryText)
+	lines := make([]string, 0, len(names))
+	for _, n := range names {
+		lines = append(lines, m.ctx.Styles.Common.FailureGlyph+" "+
+			name.Render(ansi.Truncate(n, max(0, width-2), constants.Ellipsis)))
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, lines...)
+}
+
 func (m *Model) viewChecksBar() string {
 	w := m.getIndentedContentWidth() - 6
 	stats := m.getChecksStats()
@@ -376,7 +441,7 @@ func (m *Model) renderCheckRunConclusion(checkRun data.CheckRun) (CheckCategory,
 		return CheckWaiting, m.ctx.Styles.Common.WaitingGlyph
 	}
 
-	if ghchecks.IsConclusionAFailure(string(checkRun.Conclusion)) {
+	if isFailedCheckState(string(checkRun.Conclusion)) {
 		return CheckFailure, m.ctx.Styles.Common.FailureGlyph
 	}
 
@@ -391,7 +456,7 @@ func (m *Model) renderStatusContextConclusion(
 		return CheckWaiting, m.ctx.Styles.Common.WaitingGlyph
 	}
 
-	if ghchecks.IsConclusionAFailure(conclusionStr) {
+	if isFailedCheckState(conclusionStr) {
 		return CheckFailure, m.ctx.Styles.Common.FailureGlyph
 	}
 
@@ -417,7 +482,6 @@ func renderStatusContextName(statusContext data.StatusContext) string {
 
 func (sidebar *Model) renderChecks() string {
 	title := sidebar.ctx.Styles.Common.MainTextStyle.MarginBottom(1).
-		Underline(true).
 		Render(" All Checks")
 
 	commits := sidebar.pr.Data.Enriched.Commits.Nodes
@@ -597,7 +661,7 @@ func (m *Model) getStatusCheckRollupStats(rollup data.StatusCheckRollupStats) ch
 		state := string(count.State)
 		if ghchecks.IsStatusWaiting(state) {
 			res.inProgress += int(count.Count)
-		} else if ghchecks.IsConclusionAFailure(state) {
+		} else if isFailedCheckState(state) {
 			res.failed += int(count.Count)
 		} else if ghchecks.IsConclusionASkip(state) {
 			res.skipped += int(count.Count)
@@ -631,7 +695,7 @@ func (m *Model) getChecksStats() checksStats {
 		state := string(count.State)
 		if ghchecks.IsStatusWaiting(state) {
 			res.inProgress += int(count.Count)
-		} else if ghchecks.IsConclusionAFailure(state) {
+		} else if isFailedCheckState(state) {
 			res.failed += int(count.Count)
 		} else if ghchecks.IsConclusionASkip(state) {
 			res.skipped += int(count.Count)

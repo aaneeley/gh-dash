@@ -1,9 +1,12 @@
 package prview
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	graphql "github.com/cli/shurcooL-graphql"
 	"github.com/stretchr/testify/require"
 
@@ -672,4 +675,115 @@ func TestRenderChecks_NeverDispatchedMixedWithQueued(t *testing.T) {
 		"expected 'Deploy' in pending checks, got: %q", got)
 	require.False(t, strings.Contains(got, "Workflow"),
 		"expected no 'Workflow' placeholder, got: %q", got)
+}
+
+func makeWorkflowCheckRun(workflow string, name string, conclusion checks.CheckRunState) data.CheckRun {
+	cr := makeCheckRun(name, "COMPLETED", conclusion)
+	cr.CheckSuite.WorkflowRun.Workflow.Name = graphql.String(workflow)
+	return cr
+}
+
+func TestViewChecksStatus_ListsFailedChecks(t *testing.T) {
+	m := newTestModelForChecks(t, checksTestOptions{
+		checkRuns: []data.CheckRun{
+			makeWorkflowCheckRun("CI", "lint", "SUCCESS"),
+			makeWorkflowCheckRun("CI", "unit tests", "FAILURE"),
+			makeWorkflowCheckRun("CI", "docs", "SKIPPED"),
+			makeWorkflowCheckRun("Deploy", "preview", "TIMED_OUT"),
+			makeCheckRun("legacy check", "COMPLETED", "FAILURE"),
+			makeCheckRun("still running", "IN_PROGRESS", ""),
+		},
+		rollupState: "FAILURE",
+	})
+
+	require.Equal(t,
+		[]string{"CI / unit tests", "Deploy / preview", "legacy check"},
+		m.failedCheckNames())
+
+	view, status := m.viewChecksStatus()
+	require.Equal(t, statusFailure, status)
+	plain := ansi.Strip(view)
+	require.Contains(t, plain, "3 failing")
+	for _, name := range []string{"CI / unit tests", "Deploy / preview", "legacy check"} {
+		require.Contains(t, plain, name)
+	}
+	for _, name := range []string{"lint", "docs", "still running"} {
+		require.NotContains(t, plain, name)
+	}
+	// the list comes after the counts and the bar
+	require.Less(t, strings.Index(plain, "▃"), strings.Index(plain, "CI / unit tests"))
+}
+
+func TestViewChecksStatus_NoFailedChecksList(t *testing.T) {
+	m := newTestModelForChecks(t, checksTestOptions{
+		checkRuns: []data.CheckRun{
+			makeWorkflowCheckRun("CI", "lint", "SUCCESS"),
+			makeWorkflowCheckRun("CI", "docs", "SKIPPED"),
+		},
+		rollupState: "SUCCESS",
+	})
+
+	require.Empty(t, m.failedCheckNames())
+	require.Empty(t, m.viewFailedChecks())
+	view, status := m.viewChecksStatus()
+	require.Equal(t, statusSuccess, status)
+	require.NotContains(t, ansi.Strip(view), "CI /")
+}
+
+func TestViewFailedChecks_ListsAllFailures(t *testing.T) {
+	runs := make([]data.CheckRun, 0, 11)
+	for i := range 11 {
+		runs = append(runs, makeWorkflowCheckRun("CI", fmt.Sprintf("job %d", i), "FAILURE"))
+	}
+	m := newTestModelForChecks(t, checksTestOptions{checkRuns: runs, rollupState: "FAILURE"})
+
+	lines := strings.Split(ansi.Strip(m.viewFailedChecks()), "\n")
+	require.Len(t, lines, len(runs))
+	require.Contains(t, lines[0], "CI / job 0")
+	require.Contains(t, lines[len(lines)-1], "CI / job 10")
+}
+
+func TestFailedCheckNames_StatusContexts(t *testing.T) {
+	m := newTestModelForChecks(t, checksTestOptions{})
+	contexts := &m.pr.Data.Enriched.Commits.Nodes[0].Commit.StatusCheckRollup.Contexts
+	for _, status := range []struct{ name, state string }{
+		{"deploy/preview", "FAILURE"},
+		{"security scan", "ERROR"},
+		{"build", "SUCCESS"},
+		{"waiting", "PENDING"},
+	} {
+		contexts.Nodes = append(contexts.Nodes, struct {
+			Typename      graphql.String     `graphql:"__typename"`
+			CheckRun      data.CheckRun      `graphql:"... on CheckRun"`
+			StatusContext data.StatusContext `graphql:"... on StatusContext"`
+		}{
+			Typename: "StatusContext",
+			StatusContext: data.StatusContext{
+				Context: graphql.String(status.name),
+				State:   graphql.String(status.state),
+			},
+		})
+		contexts.StatusContextCountsByState = append(contexts.StatusContextCountsByState,
+			data.ContextCountByState{State: checks.CheckRunState(status.state), Count: 1})
+	}
+	require.Equal(t, []string{"deploy/preview", "security scan"}, m.failedCheckNames())
+	require.Equal(t, 2, m.getChecksStats().failed)
+	view, status := m.viewChecksStatus()
+	require.Equal(t, statusFailure, status)
+	require.Contains(t, ansi.Strip(view), "2 failing")
+	require.Contains(t, ansi.Strip(view), "security scan")
+}
+
+func TestViewFailedChecks_LongNamesFitAvailableWidth(t *testing.T) {
+	m := newTestModelForChecks(t, checksTestOptions{
+		checkRuns: []data.CheckRun{
+			makeWorkflowCheckRun("CI", strings.Repeat("long job name ", 20), "FAILURE"),
+		},
+	})
+	for _, width := range []int{40, 80, 120} {
+		m.width = width
+		view := m.viewFailedChecks()
+		require.LessOrEqual(t, lipgloss.Width(view), m.getIndentedContentWidth()-8)
+		require.Contains(t, ansi.Strip(view), constants.Ellipsis)
+	}
 }
